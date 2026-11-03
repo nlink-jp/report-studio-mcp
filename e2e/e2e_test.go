@@ -64,7 +64,11 @@ func TestServeRendersOverStdio(t *testing.T) {
 		}
 		done := make(chan bool, 1)
 		var line string
-		go func() { done <- lines.Scan(); line = lines.Text() }()
+		go func() {
+			ok := lines.Scan()
+			line = lines.Text() // before the send: the reader must not see it unset
+			done <- ok
+		}()
 		select {
 		case ok := <-done:
 			if !ok {
