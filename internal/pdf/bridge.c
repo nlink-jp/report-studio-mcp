@@ -136,6 +136,22 @@ long rs_typeset(rs_doc *d, const char *utf8, const rs_run *runs, int nruns, doub
 	return n <= cap ? n : -n;
 }
 
+int rs_family(const char *postscript, char *buf, long n) {
+	CFStringRef name = cfstr(postscript);
+	CTFontRef font = CTFontCreateWithName(name, 12, NULL);
+	CFStringRef got = CTFontCopyPostScriptName(font);
+	int ok = CFStringCompare(got, name, 0) == kCFCompareEqualTo;
+	if (ok) {
+		CFStringRef fam = CTFontCopyFamilyName(font);
+		ok = CFStringGetCString(fam, buf, n, kCFStringEncodingUTF8);
+		CFRelease(fam);
+	}
+	CFRelease(got);
+	CFRelease(name);
+	CFRelease(font);
+	return ok;
+}
+
 double rs_measure(rs_doc *d, const char *utf8, int style) {
 	rs_run r = {0, 0, style};
 	CFStringRef s = cfstr(utf8);

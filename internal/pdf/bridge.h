@@ -50,6 +50,11 @@ void rs_doc_free(rs_doc *d);
 long rs_typeset(rs_doc *d, const char *utf8, const rs_run *runs, int nruns, double width,
                 rs_line *out, long cap);
 
+// rs_family writes the family name of the font with that PostScript name into
+// buf (UTF-8, at most n bytes with the NUL); it returns 0 when the font is not
+// installed.
+int rs_family(const char *postscript, char *buf, long n);
+
 // rs_measure returns the typographic width of utf8 in one style.
 double rs_measure(rs_doc *d, const char *utf8, int style);
 

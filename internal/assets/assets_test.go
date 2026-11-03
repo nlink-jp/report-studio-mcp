@@ -193,3 +193,20 @@ func TestMermaidFailuresAreTheEnginesOrALimit(t *testing.T) {
 	}
 	var _ color.Color // keep image/color for encode helpers
 }
+
+// A second format asks for the same pictures; they are not counted again.
+func TestRepeatedRequestsAreNotCountedTwice(t *testing.T) {
+	d := setup(t, map[string][]byte{"a.png": pngOf(t, 100, 100)})
+	a := New(d, "r.md", Limits{ImageBytes: 1 << 20, ImageSide: 600, Images: 1, Diagrams: 1, PixelBudget: 10_000_000}, lay)
+	for i := 0; i < 3; i++ {
+		if _, err := a.Image("a.png", 1); err != nil {
+			t.Fatalf("image request %d: %v", i, err)
+		}
+		if _, err := a.Mermaid("flowchart LR\n  A --> B\n", 2); err != nil {
+			t.Fatalf("diagram request %d: %v", i, err)
+		}
+	}
+	if a.Pixels() == 0 || a.images != 1 || a.charts != 1 {
+		t.Errorf("counted %d images, %d diagrams", a.images, a.charts)
+	}
+}

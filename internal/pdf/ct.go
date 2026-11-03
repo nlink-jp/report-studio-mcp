@@ -245,6 +245,19 @@ func slice(us []unit, from, to int) []Span {
 	return out
 }
 
+// FamilyName returns the family name of an installed font given by its
+// PostScript name (what Word files name fonts by), or "" when it is not
+// installed.
+func FamilyName(postScript string) string {
+	cn := C.CString(postScript)
+	defer C.free(unsafe.Pointer(cn))
+	var buf [256]C.char
+	if C.rs_family(cn, &buf[0], C.long(len(buf))) == 0 {
+		return ""
+	}
+	return C.GoString(&buf[0])
+}
+
 // Measure returns the width of text in one style.
 func (d *Doc) Measure(text string, style int) float64 {
 	cs := C.CString(text)

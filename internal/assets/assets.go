@@ -55,12 +55,22 @@ type Assets struct {
 	pixels int
 	images int
 	charts int
+	// Results are kept so that writing a second format draws on the same
+	// pictures instead of counting them against the limits again.
+	seenImages   map[string]pdf.Picture
+	seenDiagrams map[string]diagram
+}
+
+type diagram struct {
+	pic pdf.Picture
+	err error
 }
 
 // New returns the resolver for a manuscript at source (relative to the work
 // directory opened as dir).
 func New(dir *fsio.Dir, source string, lim Limits, lay Layout) *Assets {
-	return &Assets{dir: dir, base: path.Dir(source), lim: lim, lay: lay}
+	return &Assets{dir: dir, base: path.Dir(source), lim: lim, lay: lay,
+		seenImages: map[string]pdf.Picture{}, seenDiagrams: map[string]diagram{}}
 }
 
 // Pixels is how much of the budget the document used.
@@ -80,6 +90,9 @@ func (a *Assets) Image(dest string, line int) (pdf.Picture, error) {
 	rel, err := a.resolve(dest)
 	if err != nil {
 		return pdf.Picture{}, err
+	}
+	if pic, ok := a.seenImages[rel]; ok {
+		return pic, nil
 	}
 	a.images++
 	if a.images > a.lim.Images {
@@ -103,6 +116,7 @@ func (a *Assets) Image(dest string, line int) (pdf.Picture, error) {
 		}
 		return pdf.Picture{}, err
 	}
+	a.seenImages[rel] = pic
 	return pic, nil
 }
 
@@ -179,6 +193,17 @@ func (a *Assets) spend(px int) error {
 // typesetter turns into the source shown with a warning; running out of the
 // document's limits returns a *pdf.Error, which stops it.
 func (a *Assets) Mermaid(src string, line int) (pdf.Picture, error) {
+	if d, ok := a.seenDiagrams[src]; ok {
+		return d.pic, d.err
+	}
+	pic, err := a.mermaid(src)
+	if _, stop := err.(*pdf.Error); !stop {
+		a.seenDiagrams[src] = diagram{pic, err}
+	}
+	return pic, err
+}
+
+func (a *Assets) mermaid(src string) (pdf.Picture, error) {
 	a.charts++
 	if a.charts > a.lim.Diagrams {
 		return pdf.Picture{}, limit("diagrams", a.lim.Diagrams, fmt.Sprintf("the document has more than %d mermaid diagrams", a.lim.Diagrams))

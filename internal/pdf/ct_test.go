@@ -3,8 +3,12 @@ package pdf
 import (
 	"bytes"
 	"errors"
+	"image/png"
+	"math"
 	"strings"
 	"testing"
+
+	"github.com/nlink-jp/report-studio-mcp/internal/chart"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/theme"
 )
@@ -236,5 +240,47 @@ func TestBuiltinProfileFontsAreInstalled(t *testing.T) {
 			}
 		}
 		d.Close()
+	}
+}
+
+func TestFamilyName(t *testing.T) {
+	if got := FamilyName("HiraginoSans-W3"); got != "Hiragino Sans" {
+		t.Errorf("family %q", got)
+	}
+	if got := FamilyName("NoSuchFont-Regular"); got != "" {
+		t.Errorf("missing font gave %q", got)
+	}
+}
+
+func TestChartPNG(t *testing.T) {
+	d := testDoc(t)
+	spec, _, err := chart.Parse([]byte(`{"type":"bar","x":{"categories":["a","b"]},"series":[{"values":[1,2]}]}`), chart.Limits{MaxPoints: 10, MaxSeries: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, w, h, _, err := ChartPNG(d, StandardTheme(), spec, 400, 144)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := img.Bounds(); w != 400 || b.Dx() != 800 || math.Abs(float64(b.Dy())-h*2) > 1 {
+		t.Errorf("%vx%v points drawn %v", w, h, b)
+	}
+	// Something blue-ish (palette slot 1) was drawn.
+	found := false
+	for y := 0; y < img.Bounds().Dy() && !found; y += 4 {
+		for x := 0; x < img.Bounds().Dx(); x += 4 {
+			r, g, b, _ := img.At(x, y).RGBA()
+			if b>>8 > 180 && r>>8 < 80 && g>>8 < 150 {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Error("no bar drawn")
 	}
 }
