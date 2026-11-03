@@ -92,3 +92,29 @@ mermaid-render の実データ（`testdata/real` の 51 個）を、A4 の本文
 Go の実行時の cgo 部品がビルド機の OS（27.2）向けのままで、リンカが「より新しい macOS 向けの
 オブジェクト」と警告した。環境変数 `MACOSX_DEPLOYMENT_TARGET=26.0` を与えて全体をビルドし直すと
 警告は 0 件になった。Makefile でこの変数を固定する。
+
+### P0-2: 測れない（Word が無い）— Pages と代わりの LibreOffice では合格（2026-11-03）
+
+試作: 標準ライブラリだけ（`archive/zip` と文字列）で書いた .docx。部品は `[Content_Types].xml`、`_rels/.rels`、
+`docProps/core.xml`、`word/{document,styles,settings,footnotes}.xml`、`word/_rels/document.xml.rels`、
+`word/media/chart.png`。フォントはヒラギノ角ゴ（`Hiragino Sans`）。目次フィールドは、フィールドを更新しない
+読み手でも見えるよう、項目を書き込んだ状態で置き、`updateFields` を立てた。
+
+| 条件 | 結果 |
+|---|---|
+| 1. Mac 版 Word | **測れない**: この機械に Word が無い。利用者と合意し（2026-11-03）、代わりに LibreOffice 26.8.2.2 の画面で確かめた。Word での確認は残る |
+| 2. Pages（Pages Creator Studio 15.4） | 合格: 利用者の報告に修復・読み込みの警告なし |
+| 3. 6 要素が見える | Pages・LibreOffice とも合格: 目次 3 行、見出し 3 段、日本語の本文、3×3 の表、画像、脚注（本文の上付き番号とページ下の脚注文）。利用者が画面の画像で確認 |
+| 4. `textutil` の読み戻し | 合格: 段落と表の文字がすべて含まれる。脚注の文は読み戻されない（`textutil` の制約。条件の対象外） |
+
+zip の整合性（`unzip -t`）と、すべての XML 部品の整形式（`xmllint --noout`）も確認した。
+
+見えたこと（見た目の差。合否には関係しない）:
+
+- Pages は開くときに目次を作り直し、ページ番号を見出しの直後に詰めて付けた（「調査の概要1」）。目次スタイルに
+  右揃えのタブとリーダーが無いため。第 2 段階で目次スタイルにタブを定義する。
+- LibreOffice は目次をフィールドの枠つきで表示し、作り直さなかった。
+
+測定方法についての記録: この端末から `soffice --headless` で PDF に変換すると、Helvetica を含めてシステムの
+フォントが一つも使われなかった（同梱の LinuxLibertineG などに置き換わる）。文書の問題ではなく実行環境の制約と
+判断し、代わりの証拠には使っていない。ヘッドレス変換を試験に使う場合は、この点を先に解決する。

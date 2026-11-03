@@ -100,3 +100,31 @@ Note (build condition found): passing `-mmacosx-version-min=26.0` in `CGO_CFLAGS
 alone left Go's runtime cgo objects built for the build machine's OS (27.2), and the linker warned of
 objects "built for newer macOS". Setting `MACOSX_DEPLOYMENT_TARGET=26.0` in the environment and
 rebuilding everything brought the warnings to 0. The Makefile pins this variable.
+
+### P0-2: unmeasurable (no Word) — pass in Pages and in LibreOffice as the alternative (2026-11-03)
+
+Probe: a .docx written with the standard library only (`archive/zip` and strings). Parts:
+`[Content_Types].xml`, `_rels/.rels`, `docProps/core.xml`, `word/{document,styles,settings,footnotes}.xml`,
+`word/_rels/document.xml.rels`, `word/media/chart.png`. Font: Hiragino Sans. The TOC field is written
+with its entries filled in, so readers that never update fields still show them, and `updateFields` is
+set.
+
+| Criterion | Result |
+|---|---|
+| 1. Word for Mac | **Unmeasurable**: Word is not on this machine. Agreed with the operator (2026-11-03) to check in LibreOffice 26.8.2.2 instead. The Word check remains open |
+| 2. Pages (Pages Creator Studio 15.4) | Pass: the operator reported no repair or import warning |
+| 3. All six elements visible | Pass in both Pages and LibreOffice: 3-line TOC, three heading levels, Japanese body text, 3×3 table, image, footnote (superscript mark in the body and the note at the page foot). Checked by the operator from screenshots |
+| 4. `textutil` read-back | Pass: every character of the paragraphs and the table is present. The footnote text is not read back (a `textutil` limit; outside the criterion) |
+
+Zip integrity (`unzip -t`) and well-formedness of every XML part (`xmllint --noout`) were also checked.
+
+Observed (appearance only; not part of pass/fail):
+
+- Pages regenerated the TOC on opening and put page numbers right after the headings ("調査の概要1"),
+  because the TOC styles have no right-aligned tab with a leader. Phase 2 defines tabs in the TOC styles.
+- LibreOffice showed the TOC inside a field frame and did not regenerate it.
+
+Note on method: converting to PDF with `soffice --headless` from this terminal used none of the system
+fonts, Helvetica included (it fell back to bundled fonts such as LinuxLibertineG). This was judged a
+limitation of the execution environment, not of the document, and was not used as evidence. Using
+headless conversion in tests needs this solved first.
