@@ -385,7 +385,10 @@ func (l *layouter) text(rs []rich, size float64, gapEm float64, align int) {
 	lines := l.doc.Typeset(spans, l.w)
 	gap := size * gapEm
 	decos := decorations(rs)
-	for _, ln := range lines {
+	for i, ln := range lines {
+		if i%64 == 63 {
+			l.checkTime() // one paragraph can be most of a long document
+		}
 		h := ln.Ascent + ln.Descent
 		l.ensure(h)
 		base := l.y + ln.Ascent
@@ -436,18 +439,24 @@ func (l *layouter) decorate(ds []deco, ln Line, x, base float64) []deco {
 	for len(ds) > 0 && ds[0].end <= ln.Start {
 		ds = ds[1:]
 	}
+	// The pieces on this line, and all their ends measured in one layout.
+	var on []deco
+	var at []int
 	for _, d := range ds {
 		if d.start >= ln.End {
 			break
 		}
-		r := d.r
 		from, to := max(d.start, ln.Start), min(d.end, ln.End)
-		if from >= to {
-			continue
+		if from < to {
+			on = append(on, deco{d.r, from, to})
+			at = append(at, from-ln.Start, to-ln.Start)
 		}
-		x0 := x + l.doc.OffsetAt(ln.Spans, from-ln.Start)
-		x1 := x + l.doc.OffsetAt(ln.Spans, to-ln.Start)
-		x1 = math.Min(x1, x+ln.Width)
+	}
+	xs := l.doc.OffsetsAt(ln.Spans, at)
+	for i, d := range on {
+		r := d.r
+		x0 := x + xs[2*i]
+		x1 := math.Min(x+xs[2*i+1], x+ln.Width)
 		if x1 <= x0 {
 			continue
 		}

@@ -60,6 +60,9 @@ double rs_measure(rs_doc *d, const char *utf8, int style);
 
 // rs_offset returns the x offset of a UTF-16 index within a laid-out line.
 double rs_offset(rs_doc *d, const char *utf8, const rs_run *runs, int nruns, long index);
+// rs_offsets is rs_offset for n indices of one line, laid out once.
+void rs_offsets(rs_doc *d, const char *utf8, const rs_run *runs, int nruns,
+                const long *index, int n, double *out);
 
 // PDF drawing. Coordinates are points with the origin at the page's top-left,
 // y growing downward; the bridge flips them.

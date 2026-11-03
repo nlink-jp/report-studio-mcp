@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	md "github.com/nlink-jp/report-studio-mcp/internal/markdown"
 )
 
 // Breaking a paragraph into lines costs time linear in its length (the
@@ -52,5 +54,33 @@ func TestWindowedTypesetMatchesWhole(t *testing.T) {
 		if drawn := d.OffsetAt(a.Spans, a.End-a.Start); math.Abs(a.Width-drawn) > 0.01 {
 			t.Fatalf("line %d: width %.2f, drawn %.2f", i, a.Width, drawn)
 		}
+	}
+}
+
+// Decorations on a line are measured in one layout per line, not one per
+// decoration (200,000 code spans took 80 s: independent re-review).
+func TestDecoratedParagraphIsLinear(t *testing.T) {
+	d, err := NewDoc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	measure := func(n int) time.Duration {
+		var kids []md.Inline
+		for i := 0; i < n; i++ {
+			kids = append(kids, &md.Code{Value: "a"}, &md.Text{Value: " "})
+		}
+		o := opts()
+		start := time.Now()
+		if _, err := Layout(&md.Document{Children: []md.Block{&md.Paragraph{Line: 1, Children: kids}}}, d, o); err != nil {
+			t.Fatal(err)
+		}
+		took := time.Since(start)
+		t.Logf("%6d code spans: %v", n, took)
+		return took
+	}
+	small, large := measure(2000), measure(16000)
+	if large > small*20+300*time.Millisecond {
+		t.Errorf("8x the spans took %v against %v", large, small)
 	}
 }

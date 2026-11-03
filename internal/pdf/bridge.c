@@ -183,6 +183,15 @@ double rs_offset(rs_doc *d, const char *utf8, const rs_run *runs, int nruns, lon
 	return x;
 }
 
+void rs_offsets(rs_doc *d, const char *utf8, const rs_run *runs, int nruns,
+                const long *index, int n, double *out) {
+	CFAttributedStringRef as = attributed(d, utf8, runs, nruns);
+	CTLineRef line = CTLineCreateWithAttributedString(as);
+	for (int i = 0; i < n; i++) out[i] = CTLineGetOffsetForStringIndex(line, index[i], NULL);
+	CFRelease(line);
+	CFRelease(as);
+}
+
 struct rs_pdf {
 	CGContextRef ctx;
 	CFMutableDataRef data; // PDF only

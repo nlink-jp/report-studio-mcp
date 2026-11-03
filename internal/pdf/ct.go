@@ -329,6 +329,38 @@ func (d *Doc) OffsetAt(spans []Span, r int) float64 {
 	return float64(C.rs_offset(d.d, e.text, e.runPtr(), C.int(len(e.runs)), C.long(u16)))
 }
 
+// OffsetsAt is OffsetAt for several rune indices of one line, which is laid
+// out once: per index, a line with many decorations was laid out again for
+// each of them (200,000 code spans took 80 s: independent re-review).
+func (d *Doc) OffsetsAt(spans []Span, runes []int) []float64 {
+	if len(runes) == 0 {
+		return nil
+	}
+	e := encode(spans)
+	defer e.free()
+	// UTF-16 offset of every rune boundary, then of each asked index.
+	var bounds []int
+	u16 := 0
+	for _, s := range spans {
+		for _, c := range s.Text {
+			bounds = append(bounds, u16)
+			u16 += len(utf16.Encode([]rune{c}))
+		}
+	}
+	bounds = append(bounds, u16)
+	idx := make([]C.long, len(runes))
+	for i, r := range runes {
+		idx[i] = C.long(bounds[min(max(r, 0), len(bounds)-1)])
+	}
+	out := make([]C.double, len(runes))
+	C.rs_offsets(d.d, e.text, e.runPtr(), C.int(len(e.runs)), &idx[0], C.int(len(idx)), &out[0])
+	xs := make([]float64, len(out))
+	for i, v := range out {
+		xs[i] = float64(v)
+	}
+	return xs
+}
+
 // Canvas draws on a PDF page or a bitmap. Coordinates are points, origin at
 // the top-left, y growing downward.
 type Canvas struct {
