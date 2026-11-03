@@ -10,8 +10,10 @@ written here. Dependencies are nlink-jp modules only (pathguard,
 mermaid-render, toml; mermaid-render carries its declared golang.org/x/image
 and x/text exception). Callers: gem-agent and lagent.
 
-**Current stage: phase 3 — independent review done and fixed; the release
-steps remain.** The .docx has NOT been checked in Microsoft Word (no Word
+**Current stage: v0.1.0 released (2026-11-04) — darwin/arm64, Homebrew
+formula in nlink-jp/tap.** Open follow-ups live as issues elsewhere
+(ADR-025): nlink-jp/pathguard#1, nlink-jp/mcp-tactics#1,
+nlink-jp/skills-series#1. The .docx has NOT been checked in Microsoft Word (no Word
 available; operator's decision 2026-11-04) — the README's Limitations say so;
 keep that sentence true until someone checks. Phase 0 results are in
 `docs/ja/phase0-criteria.ja.md`.
