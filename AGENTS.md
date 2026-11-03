@@ -38,6 +38,9 @@ internal/transport       stdio transport (newline-delimited JSON)
 internal/mcpserver       MCP routing, tool registration, initialize, request _meta
 internal/toolerr         structured tool errors {code, message, details}
 internal/workdir         work_dir resolution and refusals (adapter over pathguard)
+internal/chart           ```chart JSON → strict validation → figure (shapes + text in points, output-independent);
+                         marks and palette from the org data-viz method, scaled for print; text measured via an
+                         injected Measurer (Core Text in the PDF side, a fixed advance in tests)
 internal/fsio            every read and write: os.Root + kernel path (F_GETPATH) judged by pathguard,
                          regular files only, O_EXCL temp + rename for outputs, output byte cap
 internal/tools           tool registration; get_usage
