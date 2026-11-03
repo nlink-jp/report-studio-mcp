@@ -133,17 +133,18 @@ func TestImagesRefused(t *testing.T) {
 }
 
 func TestImageCountAndPixelBudget(t *testing.T) {
-	d := setup(t, map[string][]byte{"a.png": pngOf(t, 500, 500)})
+	// Two files: the same file twice is one picture (see TestRepeatedRequestsAreNotCountedTwice).
+	d := setup(t, map[string][]byte{"a.png": pngOf(t, 500, 500), "b.png": pngOf(t, 500, 500)})
 	a := New(d, "r.md", Limits{ImageBytes: 1 << 20, ImageSide: 600, Images: 10, Diagrams: 2, PixelBudget: 400_000}, lay)
 	if _, err := a.Image("a.png", 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Image("a.png", 2); code(err) != "limit_exceeded" {
+	if _, err := a.Image("b.png", 2); code(err) != "limit_exceeded" {
 		t.Errorf("over the pixel budget: %v", err)
 	}
 	b := New(d, "r.md", Limits{ImageBytes: 1 << 20, ImageSide: 600, Images: 1, Diagrams: 2, PixelBudget: 10_000_000}, lay)
 	_, _ = b.Image("a.png", 1)
-	if _, err := b.Image("a.png", 2); code(err) != "limit_exceeded" {
+	if _, err := b.Image("b.png", 2); code(err) != "limit_exceeded" {
 		t.Errorf("over the image count: %v", err)
 	}
 }
