@@ -42,6 +42,8 @@ type Theme struct {
 	// Logo is an image file shown on the cover, named in the operator's
 	// configuration (never by the manuscript).
 	Logo string
+	// TOCTitle heads the table of contents.
+	TOCTitle string
 }
 
 // HexRGB parses "#rrggbb"; it panics on a malformed literal, so use it for
@@ -86,7 +88,8 @@ func Standard() Theme {
 			markdown.AlertWarning:   {"Warning", HexRGB("#c98500")},
 			markdown.AlertCaution:   {"Caution", HexRGB("#d03b3b")},
 		},
-		Chart: chart.DefaultStyle(),
+		Chart:    chart.DefaultStyle(),
+		TOCTitle: "Contents",
 	}
 }
 

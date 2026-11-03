@@ -317,3 +317,89 @@ func TestJapaneseSoftBreaksVanishOthersBecomeSpaces(t *testing.T) {
 		t.Errorf("got %q", b.String())
 	}
 }
+
+func TestCoverAndTableOfContents(t *testing.T) {
+	o := opts()
+	o.Cover, o.TOC = true, true
+	o.Logo = &Picture{Pix: bytes.Repeat([]byte{30, 60, 120, 255}, 80*40), PW: 80, PH: 40, DispW: 80}
+	d := sample(8)
+	d.Meta["classification"] = "社外秘"
+	r, doc := layout(t, d, o)
+	checkPages(t, r, StandardTheme())
+	if !r.Pages[0].Cover || r.Pages[1].Cover {
+		t.Fatal("the cover is not the first page alone")
+	}
+	// Each heading's destination sits on the page the heading list says, and
+	// the table of contents prints that page's number and links to it.
+	dests := map[string]int{}
+	links := map[string]bool{}
+	tocText := ""
+	for pi, p := range r.Pages {
+		for _, op := range p.Ops {
+			switch v := op.(type) {
+			case DestOp:
+				dests[v.Name] = pi
+			case LinkOp:
+				if v.Dest != "" {
+					links[v.Dest] = true
+				}
+			case TextOp:
+				if pi > 0 && pi < r.Headings[0].Page {
+					for _, s := range v.Spans {
+						tocText += s.Text + "|"
+					}
+				}
+			}
+		}
+	}
+	if len(r.Headings) != 16 {
+		t.Fatalf("%d headings", len(r.Headings))
+	}
+	for _, h := range r.Headings {
+		if dests[h.Dest] != h.Page || !links[h.Dest] {
+			t.Errorf("heading %q: dest on page %d, listed %d, linked %v", h.Text, dests[h.Dest], h.Page, links[h.Dest])
+		}
+		if !strings.Contains(tocText, h.Text+"|"+fmt.Sprint(h.Page+1)+"|") {
+			t.Errorf("TOC lacks %q on page %d", h.Text, h.Page+1)
+		}
+	}
+	pdf, err := Render(r, doc, StandardTheme(), Meta{Title: "調査報告書", Classification: "社外秘"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := os.Getenv("REPORT_STUDIO_COVER_PDF"); out != "" {
+		_ = os.WriteFile(out, pdf, 0o644)
+	}
+	text, pages, _ := ExtractText(pdf)
+	if pages != len(r.Pages) || !strings.Contains(text, "Contents") {
+		t.Errorf("pages %d/%d, TOC title missing", pages, len(r.Pages))
+	}
+	// The cover carries no page number; the next page does.
+	perPage := strings.Split(text, "\f")
+	if strings.Contains(perPage[0], "/") || !strings.Contains(strings.Join(strings.Fields(perPage[1]), ""), fmt.Sprintf("2/%d", len(r.Pages))) {
+		t.Errorf("page furniture wrong: cover %q", perPage[0])
+	}
+	if !strings.Contains(perPage[0], "調査報告書") || !strings.Contains(perPage[0], "社外秘") {
+		t.Errorf("cover text %q", perPage[0])
+	}
+	if !bytes.Contains(pdf, []byte("/Dests")) && !bytes.Contains(pdf, []byte("/Dest")) {
+		t.Error("no named destinations in the PDF")
+	}
+}
+
+func TestFrontPagesCountAgainstThePageLimit(t *testing.T) {
+	o := opts()
+	o.Cover, o.TOC = true, true
+	d := sample(1)
+	doc, _ := NewDoc(nil)
+	defer doc.Close()
+	r, err := Layout(d, doc, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MaxPages = len(r.Pages) - 1
+	var e *Error
+	if _, err := Layout(d, doc, o); !errors.As(err, &e) || e.Code != "limit_exceeded" {
+		t.Errorf("err = %v", err)
+	}
+}

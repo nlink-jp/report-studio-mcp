@@ -25,6 +25,10 @@ func Render(r *Result, doc *Doc, th Theme, meta Meta) ([]byte, error) {
 		if err := drawOps(&w.Canvas, doc, th, p.Ops); err != nil {
 			return nil, err
 		}
+		if p.Cover {
+			w.EndPage()
+			continue
+		}
 		num := strconv.Itoa(i+1) + " / " + total
 		nw := doc.Measure(num, furniture)
 		w.DrawText([]Span{{num, furniture}}, (th.PageW-nw)/2, th.PageH-th.MarginB/2, false)
@@ -53,7 +57,13 @@ func drawOps(c *Canvas, doc *Doc, th Theme, ops []Op) error {
 				return err
 			}
 		case LinkOp:
-			c.Link(o.X, o.Y, o.W, o.H, o.URL)
+			if o.Dest != "" {
+				c.LinkDest(o.X, o.Y, o.W, o.H, o.Dest)
+			} else {
+				c.Link(o.X, o.Y, o.W, o.H, o.URL)
+			}
+		case DestOp:
+			c.Dest(o.Name, o.X, o.Y)
 		}
 	}
 	return nil

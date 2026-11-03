@@ -13,7 +13,8 @@ import (
 	"unsafe"
 )
 
-// ExtractText reads a PDF back through PDFKit: its text and page count.
+// ExtractText reads a PDF back through PDFKit: its text, pages separated by a
+// form feed, and its page count.
 func ExtractText(pdf []byte) (string, int, error) {
 	if len(pdf) == 0 {
 		return "", 0, errors.New("empty PDF")

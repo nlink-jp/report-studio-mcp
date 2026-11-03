@@ -307,6 +307,20 @@ void rs_link(rs_pdf *p, double x, double y, double w, double h, const char *url)
 	CFRelease(u);
 }
 
+void rs_dest(rs_pdf *p, const char *name, double x, double y) {
+	if (!p->pdf) return;
+	CFStringRef n = cfstr(name);
+	CGPDFContextAddDestinationAtPoint(p->ctx, n, CGPointMake(x, fy(p, y)));
+	CFRelease(n);
+}
+
+void rs_link_dest(rs_pdf *p, double x, double y, double w, double h, const char *name) {
+	if (!p->pdf) return;
+	CFStringRef n = cfstr(name);
+	CGPDFContextSetDestinationForRect(p->ctx, n, CGRectMake(x, fy(p, y + h), w, h));
+	CFRelease(n);
+}
+
 struct rs_bitmap {
 	rs_pdf canvas;
 };

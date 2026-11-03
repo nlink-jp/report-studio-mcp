@@ -84,6 +84,10 @@ void rs_draw_rgba(rs_pdf *p, const unsigned char *pix, int pw, int ph,
                   double x, double y, double w, double h);
 // rs_link makes the rectangle a link to url.
 void rs_link(rs_pdf *p, double x, double y, double w, double h, const char *url);
+// rs_dest names the point (x, y) on the current page as a destination;
+// rs_link_dest makes the rectangle a link to a named destination.
+void rs_dest(rs_pdf *p, const char *name, double x, double y);
+void rs_link_dest(rs_pdf *p, double x, double y, double w, double h, const char *name);
 
 // Bitmap drawing for the .docx side: the same primitives into an RGBA buffer.
 typedef struct rs_bitmap rs_bitmap;

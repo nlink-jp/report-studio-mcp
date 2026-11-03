@@ -13,7 +13,12 @@ char *rs_pdf_text(const unsigned char *bytes, long n, int *pages) {
 		PDFDocument *doc = [[PDFDocument alloc] initWithData:data];
 		if (doc == nil) return NULL;
 		*pages = (int)doc.pageCount;
-		NSString *s = doc.string ?: @"";
+		// Pages are separated by a form feed so a caller can look at one.
+		NSMutableArray<NSString *> *texts = [NSMutableArray array];
+		for (NSUInteger i = 0; i < doc.pageCount; i++) {
+			[texts addObject:[doc pageAtIndex:i].string ?: @""];
+		}
+		NSString *s = [texts componentsJoinedByString:@"\f"];
 		const char *u = s.UTF8String;
 		return strdup(u ? u : "");
 	}

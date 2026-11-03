@@ -351,6 +351,20 @@ func (c *Canvas) Link(x, y, w, h float64, url string) {
 	C.rs_link(c.p, C.double(x), C.double(y), C.double(w), C.double(h), cu)
 }
 
+// Dest names a point on the current page as a link destination.
+func (c *Canvas) Dest(name string, x, y float64) {
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	C.rs_dest(c.p, cn, C.double(x), C.double(y))
+}
+
+// LinkDest makes a rectangle a link to a named destination in the document.
+func (c *Canvas) LinkDest(x, y, w, h float64, name string) {
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	C.rs_link_dest(c.p, C.double(x), C.double(y), C.double(w), C.double(h), cn)
+}
+
 // PDFWriter writes a multi-page PDF in memory.
 type PDFWriter struct {
 	Canvas

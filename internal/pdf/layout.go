@@ -48,6 +48,10 @@ type Options struct {
 	MaxPages       int
 	Chart          chart.Limits
 	MaxChartPoints int // for the whole document
+	// Cover puts a title page first; TOC a table of contents after it.
+	Cover, TOC bool
+	// Logo goes on the cover when non-nil.
+	Logo *Picture
 }
 
 // Result is a laid-out document.
@@ -55,10 +59,25 @@ type Result struct {
 	Pages       []*Page
 	Warnings    []markdown.Warning
 	ChartPoints int
+	// Headings are the document's headings of levels 1-3 with the page
+	// (0-based, in Pages) each starts on.
+	Headings []HeadingRef
 }
 
-// Page holds what to draw on one page, in drawing order.
-type Page struct{ Ops []Op }
+// HeadingRef is one heading as the table of contents lists it.
+type HeadingRef struct {
+	Level int
+	Text  string
+	Page  int
+	Dest  string // the named destination placed on it
+}
+
+// Page holds what to draw on one page, in drawing order. A cover has no page
+// furniture (number, classification).
+type Page struct {
+	Ops   []Op
+	Cover bool
+}
 
 // Op is one drawing operation; Bounds is the box it can mark.
 type Op interface {
@@ -97,10 +116,17 @@ type FigOp struct {
 	X, Y, Scale float64
 }
 
-// LinkOp makes a rectangle a link.
+// LinkOp makes a rectangle a link: to URL, or to the named destination Dest.
 type LinkOp struct {
 	X, Y, W, H float64
 	URL        string
+	Dest       string
+}
+
+// DestOp names a point as a link destination.
+type DestOp struct {
+	Name string
+	X, Y float64
 }
 
 func (o TextOp) Bounds() (float64, float64, float64, float64) {
@@ -115,6 +141,7 @@ func (o FigOp) Bounds() (float64, float64, float64, float64) {
 	return o.X, o.Y, o.X + o.Fig.W*o.Scale, o.Y + o.Fig.H*o.Scale
 }
 func (o LinkOp) Bounds() (float64, float64, float64, float64) { return o.X, o.Y, o.X + o.W, o.Y + o.H }
+func (o DestOp) Bounds() (float64, float64, float64, float64) { return o.X, o.Y, o.X, o.Y }
 
 // frame is a bar or a background that runs beside or behind blocks and may
 // span pages; each page gets its own segment.
@@ -151,6 +178,8 @@ type layouter struct {
 	line   int
 	points int
 	depth  int // list nesting, for the bullet shape
+	heads  []HeadingRef
+	base   float64 // baseline of the last line text placed
 }
 
 // Layout lays a parsed manuscript out into pages.
@@ -168,12 +197,40 @@ func Layout(md *markdown.Document, doc *Doc, o Options) (res *Result, err error)
 	}()
 	l.warns = append(l.warns, md.Warnings...)
 	l.newPage()
-	l.titleBlock(md.Meta)
+	if !o.Cover {
+		l.titleBlock(md.Meta)
+	}
 	body := textStyle{font: l.th.Body, bold: l.th.BodyBold, size: l.th.BodySize, color: l.th.Text}
 	l.blocks(md.Children, body, false)
 	l.footnotes(md.Footnotes)
 	l.closeFrames()
-	return &Result{Pages: l.pages, Warnings: l.warns, ChartPoints: l.points}, nil
+	res = &Result{Pages: l.pages, Warnings: l.warns, ChartPoints: l.points, Headings: l.heads}
+	var front []*Page
+	if o.Cover {
+		front = append(front, l.cover(md))
+	}
+	if o.TOC && len(l.heads) > 0 {
+		// The table of contents lists page numbers that depend on its own
+		// length: lay it out with placeholders to learn that, then for real.
+		n := len(l.toc(l.heads, len(front), nil))
+		toc := l.toc(l.heads, len(front), &n)
+		for len(toc) != n {
+			n = len(toc)
+			toc = l.toc(l.heads, len(front), &n)
+		}
+		front = append(front, toc...)
+	}
+	if total := len(front) + len(res.Pages); total > o.MaxPages {
+		return nil, &Error{Code: "limit_exceeded", Message: fmt.Sprintf("the document would be %d pages; the limit is %d", total, o.MaxPages),
+			Details: map[string]any{"limit": "pages", "max": o.MaxPages}}
+	}
+	if len(front) > 0 {
+		res.Pages = append(front, res.Pages...)
+		for i := range res.Headings {
+			res.Headings[i].Page += len(front)
+		}
+	}
+	return res, nil
 }
 
 func (l *layouter) fail(line int, code, msg string, details map[string]any) {
@@ -334,6 +391,7 @@ func (l *layouter) text(rs []rich, size float64, gapEm float64, align int) {
 			l.add(TextOp{Spans: ln.Spans, X: x, Y: base, W: ln.Width, Asc: ln.Ascent, Desc: ln.Descent})
 		}
 		l.drawMarker(base)
+		l.base = base
 		l.y += h + gap
 	}
 	l.y -= gap
@@ -423,6 +481,9 @@ func (l *layouter) block(b markdown.Block, ts textStyle, tight bool) {
 		l.space(size * 0.9)
 		l.ensure(size*1.3 + 2*l.lineHeight(l.th.BodySize)) // keep with what follows
 		hs := textStyle{font: l.th.Heading, bold: l.th.Heading, size: size, color: l.th.Text}
+		dest := "h" + strconv.Itoa(len(l.heads)+1)
+		l.add(DestOp{Name: dest, X: l.x, Y: l.y})
+		l.heads = append(l.heads, HeadingRef{Level: lvl, Text: plain(v.Children), Page: len(l.pages) - 1, Dest: dest})
 		l.text(flatten(l.th, hs, v.Children, l.warn), size, 0.3, 0)
 		l.space(size * 0.5)
 	case *markdown.ThematicBreak:
