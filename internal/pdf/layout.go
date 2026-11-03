@@ -589,6 +589,12 @@ func (m chartMeasurer) Width(s string, size float64, bold bool) float64 {
 
 func (l *layouter) mermaid(v *markdown.CodeBlock, ts textStyle) {
 	pic, err := l.o.Assets.Mermaid(v.Text, int(v.Line))
+	if e, ok := err.(*Error); ok { // a document limit, not a diagram that cannot be drawn
+		if e.Line == 0 {
+			e.Line = int(v.Line)
+		}
+		panic(stop{e})
+	}
 	if err != nil {
 		l.warn("mermaid_fallback", "the mermaid diagram is shown as its source: "+err.Error())
 		l.code(v.Text)

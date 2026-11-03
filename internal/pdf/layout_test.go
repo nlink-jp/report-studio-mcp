@@ -268,6 +268,20 @@ func TestStops(t *testing.T) {
 	}
 }
 
+// A document limit reached while drawing a diagram stops the document
+// instead of showing the source.
+func TestMermaidLimitStops(t *testing.T) {
+	o := opts()
+	o.Assets = fakeAssets{mermaidErr: &Error{Code: "limit_exceeded", Message: "too many diagrams"}}
+	doc, _ := NewDoc(nil)
+	defer doc.Close()
+	_, err := Layout(&md.Document{Children: []md.Block{&md.CodeBlock{Info: "mermaid", Line: 9, Text: "flowchart LR\n A-->B\n"}}}, doc, o)
+	var e *Error
+	if !errors.As(err, &e) || e.Code != "limit_exceeded" || e.Line != 9 {
+		t.Fatalf("err = %#v", err)
+	}
+}
+
 func TestMermaidFallsBackToItsSource(t *testing.T) {
 	o := opts()
 	o.Assets = fakeAssets{mermaidErr: errors.New("unsupported diagram type")}
