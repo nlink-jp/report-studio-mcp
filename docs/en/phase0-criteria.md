@@ -128,3 +128,71 @@ Note on method: converting to PDF with `soffice --headless` from this terminal u
 fonts, Helvetica included (it fell back to bundled fonts such as LinuxLibertineG). This was judged a
 limitation of the execution environment, not of the document, and was not used as evidence. Using
 headless conversion in tests needs this solved first.
+
+Handling (operator's decision, 2026-11-03): the Word check is carried over to the pre-release checks
+(RFP §4 Phase 3, "a person checks the output in Word and Pages"). The phases before it do not depend on
+Word and are not held up.
+
+### P0-3: pass (2026-11-03)
+
+Probe: the 51 diagrams in `testdata/real` drawn with mermaid-render (the lib-series working copy,
+`4f755a8` of 2026-09-30), at the scale that gives 300 dpi when the diagram's em is shown at the body's
+10.5 pt and its width at most the 481.9 pt body width (drawn once at scale 1 to measure the width, the
+scale computed from that). The RGBA is placed on one A4 PDF page with Core Graphics `CGImageCreate` →
+`CGContextDrawImage`; the increase is the difference from an empty page.
+
+| Criterion | Result |
+|---|---|
+| 1. A figure or "cannot draw" for all 51 | Pass: 48 figures, 3 cannot draw (`journey`, `classDiagram`, `gitGraph` are unsupported types). No hang or crash |
+| 2. Median increase ≤ 500 KB, maximum ≤ 4 MB | Pass: median 132 KB, maximum 251 KB |
+| 3. Diagrams over the limit drawn at a lower scale | Not exercised: no diagram hit the limit (12 Mpx; largest 3.9 Mpx, scales 1.49–3.13) |
+
+Notes:
+
+- One render took at most 15 ms. stdout was 0 bytes.
+- Core Graphics compresses the RGBA itself when embedding, so the PDF increase was smaller than the PNG
+  (median 132 KB against PNGs of roughly 130–280 KB).
+- The "draw at a lower scale" path of criterion 3 was not taken by real data. Phase 1 tests exercise it
+  with a synthetic diagram over the limit.
+- mermaid-render's `go.mod` requires `go 1.26.2`. When it is linked in, report-studio-mcp's `go`
+  directive rises to at least that.
+
+### P0-4: pass (2026-11-03, Apple M2 Max, two runs within 10 % of each other)
+
+| Measurement | Result |
+|---|---|
+| (a) 260,260 characters of body text → 114 pages | 0.20 s, PDF 0.1 MB (about 2,280 characters a page; about 0.55 s for 300 pages) |
+| (b) 20,000 frames and 20,000 short strings (100 pages) | 0.31–0.35 s, PDF 0.2 MB |
+| (c) Fifty 2000×2000 PNGs (noisy, hard to compress; 319 MB in all) | 18.3 s (Go decoding 4.4 s), PDF 499 MB |
+
+Cost is almost entirely set by image pixels (about 0.37 s and about 10 MB of PDF per 4 Mpx image), so
+image and mermaid pixels share one budget.
+
+Initial limits:
+
+| Item | Limit |
+|---|---|
+| Manuscript | 2 MiB (UTF-8) |
+| Pages | 500 |
+| Tables | 2,000 rows and 50 columns each; 20,000 cells in the document |
+| Charts | 10,000 data points each; 50,000 in the document |
+| One image | 4096×4096 pixels, 20 MiB file |
+| Image count, mermaid diagram count | 50 each |
+| Raster budget | 100 Mpx of image and mermaid pixels in all (the 12 Mpx per-diagram limit of mermaid-render stays as it is) |
+| Output | 512 MiB for the PDF and .docx together |
+
+Predicted at every limit: 500 pages of text about 0.9 s + 70,000 frame, string and chart elements about
+1.2 s + 100 Mpx of raster about 9.2 s (proportional to (c)'s 200 Mpx in 18.3 s) + .docx (images copied as
+files, chart PNGs small) about 1 s ≈ 12 s. At most 20 s: pass. Noise images filling the raster budget give
+a PDF of about 250 MB, so the 512 MiB output limit leaves twice that.
+
+### P0-5: pass (read 2026-11-03)
+
+| Item | Version and source pinned |
+|---|---|
+| Body | CommonMark spec 0.31.2 (2024-01-28); test data from that version's `spec.json` |
+| GitHub extensions | GFM spec 0.29-gfm (2019-04-06) |
+| Footnotes and callouts | Not in the GFM spec. The Footnotes and Alerts sections of GitHub Docs "Basic writing and formatting syntax" (read 2026-11-03) |
+| .docx | ECMA-376 5th edition: Part 1 (December 2016), Transitional; Part 2 (OPC) of December 2021 |
+
+RFP §2 "Specifications followed" now refers to this table.

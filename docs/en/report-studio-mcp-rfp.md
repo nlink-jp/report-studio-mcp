@@ -49,7 +49,9 @@ The `initialize` instructions state the `work_dir` contract, as the existing wor
 
 **Input: ordinary Markdown**
 
-Specifications followed (versions are pinned in Phase 0 and recorded in the repository's docs):
+Specifications followed (pinned in Phase 0: CommonMark 0.31.2, GFM 0.29-gfm, GitHub Docs for footnotes
+and callouts, ECMA-376 5th edition Transitional for .docx — sources and dates in P0-5 of
+[phase0-criteria.md](phase0-criteria.md)):
 
 - Body: the CommonMark spec. Correctness is checked against that version's official examples (about 650).
 - GitHub extensions (tables, strikethrough, task lists, autolinks): the GFM spec.
@@ -95,7 +97,9 @@ Everything else is a warning and the document is still written:
 Manuscript bytes, page count, table rows and columns, chart data points, image count, dimensions,
 bytes and total, and total output size are all capped. An image's dimensions are read first and only
 images within the limits are decoded. Initial values are set in Phase 0 by measuring the worst case, so
-that a call stays well inside gem-agent's default call timeout (60 s). mermaid-render's own limits
+that a call stays well inside gem-agent's default call timeout (60 s) (initial values and measurements in
+P0-4 of [phase0-criteria.md](phase0-criteria.md); cost is set almost entirely by image pixels, so image
+and mermaid pixels share one budget). mermaid-render's own limits
 (node count and so on) are inherited as they are.
 
 **Output**
