@@ -2,7 +2,7 @@ module github.com/nlink-jp/report-studio-mcp
 
 go 1.26.2
 
-require github.com/nlink-jp/pathguard v0.3.0
+require github.com/nlink-jp/pathguard v0.3.1
 
 require github.com/nlink-jp/toml v0.1.1
 

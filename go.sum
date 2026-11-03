@@ -1,7 +1,7 @@
 github.com/nlink-jp/mermaid-render v0.6.0 h1:P3e/8s1SgELCgCL71W0kEdPOjBu1hwa5v2CoSU/bPT4=
 github.com/nlink-jp/mermaid-render v0.6.0/go.mod h1:JsZxHRB5ynrt7L7iLhdt4Bm8WZx100otVpNrWyJBMAA=
-github.com/nlink-jp/pathguard v0.3.0 h1:4PA9txAJrGzBSxhynwPmBuvRLw4JsfQHnbjkK7njVq8=
-github.com/nlink-jp/pathguard v0.3.0/go.mod h1:MT2qgbWWm8vTVOZ2SUSwcDS7VBAxCmrc3HTwULtWb/E=
+github.com/nlink-jp/pathguard v0.3.1 h1:jhZnqv9MgvDlPJ1is2V2l6bw61t4liDFowGsyjODhOU=
+github.com/nlink-jp/pathguard v0.3.1/go.mod h1:MT2qgbWWm8vTVOZ2SUSwcDS7VBAxCmrc3HTwULtWb/E=
 github.com/nlink-jp/toml v0.1.1 h1:zxmLkY1muUMABHCJlwI5wI4RQFOFVo/6Ut223/X4L8M=
 github.com/nlink-jp/toml v0.1.1/go.mod h1:dzbdZU7YAqs6r72Cz0bxRLCapcdZor68Mo5cPVZ2U30=
 golang.org/x/image v0.46.0 h1:b1+oYj0Jbp6K5MDT4i4/eZpYlk3V8SJhhDKh6LBHAyQ=
