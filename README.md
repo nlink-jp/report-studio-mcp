@@ -83,8 +83,9 @@ directory the caller can read back (organization ADR-021).
   files are read; outputs are placed under a fresh name and renamed.
 - Only `http`, `https` and `mailto` links become clickable. Defanged
   indicators stay as written.
-- The PDF's document information and the .docx's core properties hold the
-  title and author only.
+- The .docx's core properties hold the title and author only. The PDF's
+  document information holds the title and author, plus what Core Graphics
+  always writes: the producer (the macOS version) and the creation date.
 
 ## Requirements
 

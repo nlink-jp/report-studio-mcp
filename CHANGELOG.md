@@ -41,6 +41,15 @@ All notable changes to this project are documented here. The format follows
   pathguard's floor, regular files only, outputs placed under a fresh name and
   renamed; only http, https and mailto links are clickable; the JSON-RPC stdout
   is isolated at the descriptor level.
+- A pre-release independent review (security, parser, output) and its
+  fixes: a panicking tool no longer stops the server; charts with degenerate
+  ranges finish and huge ones stay within a raster limit; long paragraphs and
+  repeated pictures render in linear time, and every call has a 45 s deadline;
+  the parser's table and footnote work is bounded; the opened work directory is
+  validated by its kernel name, hard links and linked output directories are
+  refused; defanged indicators stay unlinked; table cells keep strikes and
+  links; deep nesting, long covers, empty headings and right-to-left text keep
+  their text; notes referred to only from other notes stay in the .docx.
 - Docs: the RFP and the phase 0 criteria and results
   ([docs/en/report-studio-mcp-rfp.md](docs/en/report-studio-mcp-rfp.md),
   [docs/en/phase0-criteria.md](docs/en/phase0-criteria.md)).

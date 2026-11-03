@@ -71,7 +71,8 @@ logo = "~/Pictures/logo.png"
   [pathguard](https://github.com/nlink-jp/pathguard) の床に照らします。読むのは通常のファイルだけで、
   出力は新しい一時名で書いてから名前を付け替えます。
 - クリックできるリンクは `http`・`https`・`mailto` だけです。無害化された指標は書かれたまま出します。
-- PDF の文書情報と .docx の文書プロパティに入れるのは題名と作成者だけです。
+- .docx の文書プロパティに入れるのは題名と作成者だけです。PDF の文書情報には題名と作成者のほか、
+  Core Graphics が必ず書く作成ソフト（macOS の版）と作成日時が入ります。
 
 ## 動作環境
 

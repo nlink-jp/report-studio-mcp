@@ -53,7 +53,8 @@ CHARTS  (a fenced block whose info string is "chart"; its content is JSON)
    "series": [{"name": "...", "values": [1, null, 3]}]}  null leaves a gap
   Scatter: no categories; series take "points": [[x, y], ...]; x may have min/max too.
   Series: up to 8 (bar, line) or 3 (scatter) — more colours cannot be told apart; split the
-  chart. With two or more series each needs a distinct name (the legend shows it). One y axis
+  chart. Values and fixed axis ends must lie within ±1e15 (scale large counts or timestamps);
+  labels, categories and series names are at most 200 characters, a title 300. With two or more series each needs a distinct name (the legend shows it). One y axis
   only: two measures of different scale belong in two charts.
 
 MERMAID  (a fenced block whose info string is "mermaid")
@@ -77,7 +78,8 @@ PROFILES
 LIMITS
   manuscript 2 MiB; 500 pages; a table 2,000 rows and 50 columns, 20,000 cells in all; a chart
   10,000 data points, 50,000 in all; 50 images, each at most 4096x4096 and 20 MiB; 50 mermaid
-  diagrams; 100,000,000 pixels of images and diagrams together; 512 MiB of output.
+  diagrams; 100,000,000 pixels of images, diagrams and .docx charts together; 512 MiB of
+  output; 45 seconds per call.
 
 ERRORS  (code — meaning — what to do)
   work_dir_required / work_dir_invalid / work_dir_not_found / work_dir_not_writable /
@@ -86,12 +88,16 @@ ERRORS  (code — meaning — what to do)
   missing_argument — source is missing — pass the manuscript path.
   file_not_found — the manuscript or an image is not there — check the path (relative to
   work_dir for source, to the manuscript for images).
-  path_not_allowed — a path leaves work_dir or is a protected place (details.reason) — move
-  the file under work_dir.
+  path_not_allowed — a path leaves work_dir, is a protected place, has a second name (a hard
+  link) or an output directory on its path is a link (details.reason) — use a plain file and
+  plain directories under work_dir.
   image_invalid — not a PNG/JPEG, unreadable, or a URL — use a PNG or JPEG file.
   chart_invalid — the chart JSON cannot be drawn faithfully; details.line is the manuscript
   line — fix the JSON as the message says.
-  limit_exceeded — over a limit (details.limit, details.max) — split or shrink the content.
+  limit_exceeded — over a limit (details.limit, details.max; "time" when the call would
+  outlast its 45 s) — split or shrink the content.
+  internal_error — the server failed unexpectedly on this input and is still running — report
+  it to the operator with the manuscript.
   profile_unknown — no such profile — use one listed under THIS MACHINE.
   config_invalid — the operator's config.toml cannot be used — tell the operator; the
   message names the file and the problem.
@@ -107,5 +113,9 @@ WARNINGS  (the PDF is written; each names its manuscript line)
   inline_image — an image inside a paragraph is shown as its caption; give it its own line.
   mermaid_fallback — the diagram is shown as its source.
   chart_labels_thinned — too many categories to label each one.
+  chart_scaled — a chart taller than a page is drawn smaller to fit.
+  unclosed_front_matter — the first line is --- but no closing --- follows; it is read as text.
+  duplicate_front_matter_key — a key is given twice; the later value is used.
+  control_characters — characters a .docx cannot carry were removed from it.
   table_wrapped — a wide table is set small and its cells wrap.
 `
