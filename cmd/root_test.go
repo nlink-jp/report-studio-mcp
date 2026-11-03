@@ -3,7 +3,10 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -81,5 +84,44 @@ func TestServeListsTools(t *testing.T) {
 	}
 	if !strings.Contains(lines[1], `"name":"get_usage"`) {
 		t.Errorf("tools/list missing get_usage: %s", lines[1])
+	}
+}
+
+// TestIsolatedStdoutCarriesOnlyTheStream runs this test binary again as a
+// child that isolates stdout, prints to descriptor 1 the way native code
+// would, then writes through the private descriptor: the parent's stdout must
+// hold only what went through the private one.
+func TestIsolatedStdoutCarriesOnlyTheStream(t *testing.T) {
+	if os.Getenv("RSM_ISOLATION_CHILD") == "1" {
+		f, err := isolateStdout()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(3)
+		}
+		fmt.Println("noise from a native library")
+		_, _ = os.Stdout.WriteString("more noise\n")
+		_, _ = f.WriteString(`{"jsonrpc":"2.0","id":1,"result":{}}` + "\n")
+		os.Exit(0)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestIsolatedStdoutCarriesOnlyTheStream$")
+	cmd.Env = append(os.Environ(), "RSM_ISOLATION_CHILD=1")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("child: %v\n%s", err, stderr.String())
+	}
+	if got := stdout.String(); got != `{"jsonrpc":"2.0","id":1,"result":{}}`+"\n" {
+		t.Errorf("stdout = %q", got)
+	}
+	if !strings.Contains(stderr.String(), "noise from a native library") || !strings.Contains(stderr.String(), "more noise") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}
+
+func TestServingIsTheDefault(t *testing.T) {
+	for args, want := range map[string]bool{"": true, "serve": true, "version": false, "--version": false, "serve x": false} {
+		if got := serving(strings.Fields(args)); got != want {
+			t.Errorf("serving(%q) = %v", args, got)
+		}
 	}
 }
