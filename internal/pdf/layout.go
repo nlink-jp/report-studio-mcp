@@ -156,7 +156,7 @@ type layouter struct {
 // Layout lays a parsed manuscript out into pages.
 func Layout(md *markdown.Document, doc *Doc, o Options) (res *Result, err error) {
 	l := &layouter{doc: doc, o: o, th: o.Theme}
-	l.x, l.w = l.th.MarginL, l.th.contentW()
+	l.x, l.w = l.th.MarginL, l.th.ContentW()
 	defer func() {
 		if r := recover(); r != nil {
 			s, ok := r.(stop)
@@ -568,7 +568,7 @@ func (l *layouter) chart(v *markdown.CodeBlock) {
 		l.warn("chart_labels_thinned", w)
 	}
 	scale := 1.0
-	if limit := l.th.bodyH() * 0.9; fig.H > limit {
+	if limit := l.th.BodyH() * 0.9; fig.H > limit {
 		scale = limit / fig.H
 	}
 	l.ensure(fig.H * scale)
@@ -626,7 +626,7 @@ func (l *layouter) picture(p Picture, caption string, ts textStyle) {
 	}
 	w := math.Min(p.DispW, l.w)
 	h := w * float64(p.PH) / float64(p.PW)
-	if limit := l.th.bodyH() * 0.75; h > limit {
+	if limit := l.th.BodyH() * 0.75; h > limit {
 		w, h = w*limit/h, limit
 	}
 	l.ensure(h)

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/nlink-jp/report-studio-mcp/internal/theme"
 )
 
 const (
@@ -217,5 +219,22 @@ func TestLinesKnowTheirRuneRanges(t *testing.T) {
 	one := lines[0].Spans
 	if x := d.OffsetAt(one, 1); x <= 0 || x >= lines[0].Width {
 		t.Errorf("offset of rune 1 = %v", x)
+	}
+}
+
+// Every font a built-in profile names is installed here.
+func TestBuiltinProfileFontsAreInstalled(t *testing.T) {
+	for _, n := range theme.BuiltinNames() {
+		th, _ := theme.Builtin(n)
+		d, err := NewDoc(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range []string{th.Body, th.BodyBold, th.Heading, th.Code} {
+			if _, err := d.Add(Style{Font: f, Size: 10}); err != nil {
+				t.Errorf("%s: %v", n, err)
+			}
+		}
+		d.Close()
 	}
 }
