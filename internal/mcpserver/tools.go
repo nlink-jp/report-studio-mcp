@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/jsonrpc"
 	"github.com/nlink-jp/report-studio-mcp/internal/toolerr"
@@ -86,7 +87,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req jsonrpc.Request) error
 	if len(p.Meta) > 0 {
 		ctx = WithRequestMeta(ctx, p.Meta)
 	}
-	out, err := h(ctx, p.Arguments)
+	out, err := s.call(ctx, h, p)
 	if err != nil {
 		return s.writeToolError(req, err)
 	}
@@ -106,6 +107,20 @@ func (s *Server) handleToolsCall(ctx context.Context, req jsonrpc.Request) error
 	return s.writeResult(req.ID, toolsCallResult{
 		Content: []ContentBlock{{Type: "text", Text: string(body)}},
 	})
+}
+
+// call runs a handler and turns a panic into a tool error, so that one bad
+// input cannot take the server down with every other caller's work. The
+// panic is logged with its stack for the operator; the caller gets a stable
+// code and no internals.
+func (s *Server) call(ctx context.Context, h ToolHandler, p toolsCallParams) (out any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("tool panicked", "tool", p.Name, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+			out, err = nil, toolerr.Newf(toolerr.CodeInternal, "%s failed unexpectedly; the server is still running", p.Name)
+		}
+	}()
+	return h(ctx, p.Arguments)
 }
 
 // writeToolError emits a tool error per MCP convention: result with

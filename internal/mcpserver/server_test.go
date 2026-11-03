@@ -209,3 +209,28 @@ func splitLines(s string) []string {
 	}
 	return strings.Split(s, "\n")
 }
+
+// A handler that panics yields a tool error and the server keeps serving.
+func TestPanickingToolDoesNotStopTheServer(t *testing.T) {
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"boom","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ok","arguments":{}}}`,
+	}, "\n") + "\n")
+	var out bytes.Buffer
+	tr := transport.NewStdioTransport(in, &out)
+	srv := New("report-studio-mcp", "test", tr, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv.RegisterTool(Tool{Name: "boom", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		func(context.Context, json.RawMessage) (any, error) { var m map[string]int; m["x"]++; return nil, nil })
+	srv.RegisterTool(Tool{Name: "ok", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		func(context.Context, json.RawMessage) (any, error) { return "fine", nil })
+	if err := srv.Serve(context.Background()); err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, `"isError":true`) || !strings.Contains(s, "internal_error") || !strings.Contains(s, "fine") {
+		t.Errorf("output: %s", s)
+	}
+	if strings.Contains(s, "goroutine") || strings.Contains(s, "nil map") {
+		t.Errorf("internals leaked to the caller: %s", s)
+	}
+}

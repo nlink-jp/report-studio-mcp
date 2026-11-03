@@ -77,4 +77,6 @@ const (
 	// A manuscript, an image or the output is over one of the limits;
 	// details name the limit and the size.
 	CodeLimitExceeded = "limit_exceeded"
+	// A tool failed in a way it did not anticipate (a recovered panic).
+	CodeInternal = "internal_error"
 )
