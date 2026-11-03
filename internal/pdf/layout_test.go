@@ -416,3 +416,114 @@ func TestDeadlineStopsTheLayout(t *testing.T) {
 		t.Fatalf("err = %#v", err)
 	}
 }
+
+// Fixes from the independent review of the output.
+func TestReviewRegressions(t *testing.T) {
+	t.Run("table cells keep strikes and links", func(t *testing.T) {
+		tb := &md.Table{Line: 1, Align: []md.Align{md.AlignNone, md.AlignRight},
+			Header: [][]md.Inline{txt("品目"), txt("価格")},
+			Rows: [][][]md.Inline{{txt("本"), {&md.Strike{Children: txt("1,000円")}, &md.Text{Value: " 800円"},
+				&md.Link{Dest: "https://example.com/p", Children: txt("詳細")}}}}}
+		r, _ := layout(t, &md.Document{Children: []md.Block{tb}}, opts())
+		var strikes, links int
+		for _, op := range r.Pages[0].Ops {
+			switch v := op.(type) {
+			case LineOp:
+				if v.X2-v.X1 > 1 && v.X2-v.X1 < 60 && v.Width < 0.75 {
+					strikes++
+				}
+			case LinkOp:
+				links++
+			}
+		}
+		if strikes != 1 || links != 1 {
+			t.Errorf("strikes %d links %d, want 1 and 1", strikes, links)
+		}
+	})
+	t.Run("a table near the foot of a page keeps its header off the margin", func(t *testing.T) {
+		var bs []md.Block
+		for i := 0; i < 40; i++ {
+			bs = append(bs, mdPara(fmt.Sprint("Para ", i, ".")))
+		}
+		bs = append(bs, &md.Table{Line: 1, Align: []md.Align{md.AlignNone}, Header: [][]md.Inline{txt("見出し")},
+			Rows: [][][]md.Inline{{txt("一")}, {txt("二")}}})
+		r, _ := layout(t, &md.Document{Children: bs}, opts())
+		checkPages(t, r, StandardTheme())
+	})
+	t.Run("deep nesting keeps its text on the page", func(t *testing.T) {
+		var b md.Block = mdPara("最も深い本文")
+		for i := 0; i < 60; i++ {
+			b = &md.BlockQuote{Children: []md.Block{b}}
+		}
+		var l md.Block = mdPara("深いリストの本文")
+		for i := 0; i < 40; i++ {
+			l = &md.List{Tight: true, Items: []*md.ListItem{{Children: []md.Block{l}}}}
+		}
+		r, doc := layout(t, &md.Document{Children: []md.Block{b, l}}, opts())
+		checkPages(t, r, StandardTheme())
+		pdf, _ := Render(r, doc, StandardTheme(), Meta{})
+		text, _, _ := ExtractText(pdf)
+		if !strings.Contains(text, "最も深い本文") || !strings.Contains(text, "深いリストの本文") {
+			t.Errorf("text lost: %q", text)
+		}
+	})
+	t.Run("an empty heading and a long title on the cover", func(t *testing.T) {
+		o := opts()
+		o.Cover, o.TOC = true, true
+		d := sample(2)
+		d.Meta["title"] = strings.Repeat("とても長い題名", 50)
+		d.Children = append([]md.Block{&md.Heading{Level: 1, Line: 1}}, d.Children...)
+		r, doc := layout(t, d, o)
+		checkPages(t, r, StandardTheme())
+		pdf, _ := Render(r, doc, StandardTheme(), Meta{})
+		text, _, _ := ExtractText(pdf)
+		if !strings.Contains(strings.Join(strings.Fields(text), ""), "2026-11-03") {
+			t.Error("the byline after a long cover title was lost")
+		}
+	})
+	t.Run("mailto keeps only its address", func(t *testing.T) {
+		d := &md.Document{Children: []md.Block{&md.Paragraph{Line: 1, Children: []md.Inline{
+			&md.Link{Dest: "mailto:a@b.example?attach=/etc/passwd", Children: txt("mail")}}}}}
+		r, _ := layout(t, d, opts())
+		for _, op := range r.Pages[0].Ops {
+			if l, ok := op.(LinkOp); ok && l.URL != "mailto:a@b.example" {
+				t.Errorf("link %q", l.URL)
+			}
+		}
+	})
+	t.Run("a wide table warns once per link", func(t *testing.T) {
+		var header [][]md.Inline
+		var row [][]md.Inline
+		var align []md.Align
+		for c := 0; c < 30; c++ {
+			header = append(header, txt(fmt.Sprint("見出し", c)))
+			row = append(row, []md.Inline{&md.Link{Dest: "ftp://x", Children: txt("x")}})
+			align = append(align, md.AlignNone)
+		}
+		r, _ := layout(t, &md.Document{Children: []md.Block{&md.Table{Line: 1, Align: align, Header: header, Rows: [][][]md.Inline{row}}}}, opts())
+		n := 0
+		for _, w := range r.Warnings {
+			if w.Code == "link_scheme" {
+				n++
+			}
+		}
+		if n != 30 {
+			t.Errorf("%d link_scheme warnings, want 30", n)
+		}
+	})
+}
+
+func TestExpandTabs(t *testing.T) {
+	for in, want := range map[string]string{"a\tb": "a   b", "\tx": "    x", "abcd\te": "abcd    e", "no tabs": "no tabs"} {
+		if got := expandTabs(in, 4); got != want {
+			t.Errorf("expandTabs(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPlainTextKeepsCodeAndHTML(t *testing.T) {
+	got := PlainText([]md.Inline{&md.Text{Value: "First "}, &md.Code{Value: "code"}, &md.Text{Value: " and "}, &md.RawHTML{Raw: "<kbd>"}, &md.Text{Value: "K"}})
+	if got != "First code and <kbd>K" {
+		t.Errorf("got %q", got)
+	}
+}

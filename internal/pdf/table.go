@@ -17,19 +17,19 @@ func (l *layouter) table(t *markdown.Table) {
 	if ncol == 0 {
 		return
 	}
-	cells := func(size float64, header bool) ([][]rich, [][][]rich) {
+	cells := func(size float64, warn func(code, msg string)) ([][]rich, [][][]rich) {
 		ts := textStyle{font: th.Body, bold: th.BodyBold, size: size, color: th.Text}
 		hs := ts
 		hs.font = th.BodyBold
 		head := make([][]rich, ncol)
 		for c := range head {
-			head[c] = flatten(th, hs, t.Header[c], l.warn)
+			head[c] = flatten(th, hs, t.Header[c], warn)
 		}
 		rows := make([][][]rich, len(t.Rows))
 		for r, row := range t.Rows {
 			rows[r] = make([][]rich, ncol)
 			for c := range row {
-				rows[r][c] = flatten(th, ts, row[c], l.warn)
+				rows[r][c] = flatten(th, ts, row[c], warn)
 			}
 		}
 		return head, rows
@@ -39,9 +39,12 @@ func (l *layouter) table(t *markdown.Table) {
 	var widths []float64
 	var head [][]rich
 	var rows [][][]rich
+	quiet := func(string, string) {}
 	for size = th.TableSize; ; size -= 0.5 {
 		pad = size * 0.45
-		head, rows = cells(size, true)
+		// Trial sizes stay quiet; the size chosen warns once below (each
+		// trial warned again: independent review).
+		head, rows = cells(size, quiet)
 		natural := make([]float64, ncol)
 		see := func(c int, rs []rich) {
 			for _, ln := range l.doc.Typeset(l.spans(rs), math.MaxFloat32) {
@@ -68,17 +71,55 @@ func (l *layouter) table(t *markdown.Table) {
 			break
 		}
 	}
+	head, rows = cells(size, l.warn)
 
-	headLines := l.cellLines(head, widths, pad)
+	headCells := l.cellLines(head, widths, pad)
+	headH := rowHeight(headCells, pad)
+	// The header starts a page only together with the first row, or it is
+	// left alone at the foot of the page.
+	first := headH
+	if len(rows) > 0 {
+		first += rowHeight(l.cellLines(rows[0], widths, pad), pad)
+	}
+	if first <= l.bottom()-l.top() {
+		l.ensure(first)
+	} else {
+		l.ensure(headH)
+	}
 	drawHead := func() {
-		l.row(headLines, widths, pad, t.Align, true)
+		l.row(l.cellLines(head, widths, pad), widths, pad, t.Align, true)
 	}
 	drawHead()
-	l.hooks = append(l.hooks, drawHead)
+	// A header taller than half a page is not repeated: repeating it would
+	// leave no room for rows (and recursed through the page hook).
+	repeat := headH <= (l.bottom()-l.top())/2
+	if repeat {
+		l.hooks = append(l.hooks, drawHead)
+	}
 	for _, row := range rows {
 		l.row(l.cellLines(row, widths, pad), widths, pad, t.Align, false)
 	}
-	l.hooks = l.hooks[:len(l.hooks)-1]
+	if repeat {
+		l.hooks = l.hooks[:len(l.hooks)-1]
+	}
+}
+
+// cell is one table cell's lines and the decorations they carry.
+type cell struct {
+	lines []Line
+	decos []deco
+}
+
+func rowHeight(cells []cell, pad float64) float64 {
+	need := 0.0
+	for _, c := range cells {
+		h := 0.0
+		for _, ln := range c.lines {
+			h += lineH(ln)
+		}
+		need = math.Max(need, h)
+	}
+	return need + 2*pad
 }
 
 // fitColumns scales natural widths to the available width: up
@@ -112,11 +153,11 @@ func fitColumns(natural []float64, avail, least float64) []float64 {
 	return out
 }
 
-func (l *layouter) cellLines(cells [][]rich, widths []float64, pad float64) [][]Line {
-	out := make([][]Line, len(cells))
+func (l *layouter) cellLines(cells [][]rich, widths []float64, pad float64) []cell {
+	out := make([]cell, len(cells))
 	for c, rs := range cells {
 		if len(rs) > 0 {
-			out[c] = l.doc.Typeset(l.spans(rs), widths[c]-2*pad)
+			out[c] = cell{lines: l.doc.Typeset(l.spans(rs), widths[c]-2*pad), decos: decorations(rs)}
 		}
 	}
 	return out
@@ -126,18 +167,11 @@ func lineH(ln Line) float64 { return ln.Ascent + ln.Descent + ln.Leading }
 
 // row places one table row, continuing it on following pages when it is
 // taller than what is left of a fresh page.
-func (l *layouter) row(cells [][]Line, widths []float64, pad float64, align []markdown.Align, header bool) {
+func (l *layouter) row(cells []cell, widths []float64, pad float64, align []markdown.Align, header bool) {
 	l.checkTime()
 	th := l.th
-	need := 0.0
-	for _, lines := range cells {
-		h := 0.0
-		for _, ln := range lines {
-			h += lineH(ln)
-		}
-		need = math.Max(need, h)
-	}
-	if !header && l.y+need+2*pad > l.bottom() && need+2*pad <= l.bottom()-l.top() {
+	need := rowHeight(cells, pad)
+	if !header && l.y+need > l.bottom() && need <= l.bottom()-l.top() {
 		l.newPage() // the header hook redraws the header
 	}
 	next := make([]int, len(cells))
@@ -147,7 +181,8 @@ func (l *layouter) row(cells [][]Line, widths []float64, pad float64, align []ma
 		start := len(l.page().Ops)
 		used, more := 0.0, false
 		x := l.x
-		for c, lines := range cells {
+		for c := range cells {
+			lines := cells[c].lines
 			y := top + pad
 			i := next[c]
 			for ; i < len(lines); i++ {
@@ -163,6 +198,13 @@ func (l *layouter) row(cells [][]Line, widths []float64, pad float64, align []ma
 				case markdown.AlignCenter:
 					lx = x + (widths[c]-ln.Width)/2
 				}
+				// Strikes, links and code backgrounds as in running text (a
+				// struck price read as current without them: independent
+				// review), clipped to the cell.
+				ox, ow := l.x, l.w
+				l.x, l.w = x+pad, widths[c]-2*pad
+				cells[c].decos = l.decorate(cells[c].decos, ln, lx, y+ln.Ascent)
+				l.x, l.w = ox, ow
 				if len(ln.Spans) > 0 {
 					l.add(TextOp{Spans: ln.Spans, X: lx, Y: y + ln.Ascent, W: ln.Width, Asc: ln.Ascent, Desc: ln.Descent})
 				}

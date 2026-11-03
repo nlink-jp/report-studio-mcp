@@ -299,20 +299,15 @@ func outputPath(workspace, source, format string) string {
 }
 
 // titleOf is the document's title: the front matter's, else its first
-// heading's text.
+// heading's text (code spans included: dropping them lost words, independent
+// review).
 func titleOf(doc *markdown.Document) string {
 	if t := doc.Meta["title"]; t != "" {
 		return t
 	}
 	for _, b := range doc.Children {
 		if h, ok := b.(*markdown.Heading); ok {
-			var sb strings.Builder
-			for _, n := range h.Children {
-				if t, ok := n.(*markdown.Text); ok {
-					sb.WriteString(t.Value)
-				}
-			}
-			return sb.String()
+			return pdf.PlainText(h.Children)
 		}
 	}
 	return ""

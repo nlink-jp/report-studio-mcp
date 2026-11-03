@@ -216,7 +216,7 @@ func Layout(md *markdown.Document, doc *Doc, o Options) (res *Result, err error)
 	res = &Result{Pages: l.pages, Warnings: l.warns, ChartPoints: l.points, Headings: l.heads}
 	var front []*Page
 	if o.Cover {
-		front = append(front, l.cover(md))
+		front = append(front, l.cover(md)...)
 	}
 	if o.TOC && len(l.heads) > 0 {
 		// The table of contents lists page numbers that depend on its own
@@ -589,8 +589,17 @@ func (l *layouter) block(b markdown.Block, ts textStyle, tight bool) {
 }
 
 // indented lays content out to the right of a bar.
+// indentBy returns how far to indent: d, or less once the column would get
+// narrower than three tenths of the text width. Deeper nesting then stops
+// moving right instead of running the text off the page (independent review).
+func (l *layouter) indentBy(d float64) float64 {
+	return math.Max(0, math.Min(d, l.w-l.th.ContentW()*0.3))
+}
+
 func (l *layouter) indented(bar *frame, size float64, content func()) {
 	l.flushMarker()
+	size = l.indentBy(size)
+	bar.x = l.x
 	l.openFrame(bar)
 	x, w := l.x, l.w
 	l.x, l.w = x+size, w-size
@@ -621,9 +630,12 @@ func (l *layouter) list(v *markdown.List, ts textStyle) {
 		widest = math.Max(widest, l.doc.Measure(markers[i], ms))
 	}
 	indent := math.Max(ts.size*1.6, widest+ts.size*0.6)
+	indent = l.indentBy(indent)
 	for i, it := range v.Items {
 		l.line = int(it.Line)
 		x, w := l.x, l.w
+		// Past the nesting floor the marker sits left of the column, in the
+		// parent's room, where nothing else is on its line.
 		l.mark = &marker{spans: []Span{{Text: markers[i], Style: ms}}, x: x + indent - ts.size*0.4, size: ts.size}
 		l.x, l.w = x+indent, w-indent
 		l.blocks(it.Children, ts, v.Tight)
@@ -647,7 +659,7 @@ func (l *layouter) code(text string) {
 		if ln == "" {
 			ln = " "
 		}
-		ln = strings.ReplaceAll(ln, "\t", "    ")
+		ln = expandTabs(ln, 4)
 		l.text([]rich{{text: ln, style: cs}}, size, 0.25, 0)
 		l.y += size * 0.25
 	}
@@ -683,6 +695,27 @@ func (l *layouter) chart(v *markdown.CodeBlock) {
 	l.ensure(fig.H * scale)
 	l.add(FigOp{Fig: fig, X: l.x, Y: l.y, Scale: scale})
 	l.y += fig.H * scale
+}
+
+// expandTabs replaces each tab with spaces to the next multiple of width
+// columns, as a terminal or editor shows it.
+func expandTabs(s string, width int) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+	var b strings.Builder
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			n := width - col%width
+			b.WriteString(strings.Repeat(" ", n))
+			col += n
+			continue
+		}
+		b.WriteRune(r)
+		col++
+	}
+	return b.String()
 }
 
 // chartMeasurer measures chart text with the body fonts.

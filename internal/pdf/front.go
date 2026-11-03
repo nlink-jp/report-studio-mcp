@@ -3,6 +3,7 @@ package pdf
 import (
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
 )
@@ -17,7 +18,7 @@ func (l *layouter) sub() *layouter {
 
 // cover lays out the title page: the logo at the top, the title block about a
 // third of the way down, the classification near the bottom, all centred.
-func (l *layouter) cover(md *markdown.Document) *Page {
+func (l *layouter) cover(md *markdown.Document) []*Page {
 	th := l.th
 	s := l.sub()
 	s.newPage()
@@ -56,7 +57,10 @@ func (l *layouter) cover(md *markdown.Document) *Page {
 		s.y = math.Max(s.y+th.MetaSize*2, s.bottom()-th.MetaSize*4)
 		s.text([]rich{{text: v, style: style(th.BodyBold, th.MetaSize*1.2, th.Text)}}, th.MetaSize*1.2, 0.25, 1)
 	}
-	return s.pages[0]
+	for _, p := range s.pages {
+		p.Cover = true // a title block longer than a page continues, unnumbered
+	}
+	return s.pages
 }
 
 // toc lays out the table of contents. Each entry links to its heading and
@@ -83,13 +87,18 @@ func (l *layouter) toc(heads []HeadingRef, front int, n *int) []*Page {
 		s.ensure(s.lineHeight(th.BodySize))
 		y0, page := s.y, len(s.pages)
 		s.x, s.w = x+indent, w-indent-numW-th.BodySize*1.5
-		s.text([]rich{{text: h.Text, style: st}}, th.BodySize, 0.3, 0)
+		text := h.Text
+		if strings.TrimSpace(text) == "" {
+			text = "—" // an empty heading still has a page; give the number a line
+		}
+		s.text([]rich{{text: text, style: st}}, th.BodySize, 0.3, 0)
 		s.x, s.w = x, w
 		s.add(TextOp{Spans: []Span{{Text: num, Style: numID}}, X: x + w - numW, Y: s.base, W: numW,
 			Asc: th.BodySize * 0.88, Desc: th.BodySize * 0.12})
-		if page == len(s.pages) { // an entry broken across pages links only its last part
-			s.add(LinkOp{X: x, Y: y0, W: w, H: s.y - y0, Dest: h.Dest})
+		if page != len(s.pages) { // broken across pages: link the part on this one
+			y0 = s.top()
 		}
+		s.add(LinkOp{X: x, Y: y0, W: w, H: s.y - y0, Dest: h.Dest})
 		s.y += th.BodySize * 0.45
 	}
 	return s.pages

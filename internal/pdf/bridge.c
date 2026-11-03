@@ -45,6 +45,15 @@ static CFDictionaryRef makeAttrs(const rs_style *s) {
 		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 	CFDictionarySetValue(a, kCTFontAttributeName, font);
 	CFDictionarySetValue(a, kCTForegroundColorAttributeName, col);
+	// Lines are drawn re-created from their own text; with a natural
+	// direction each would take it from its first strong character, so a
+	// wrapped line starting in Hebrew reordered (independent review). The
+	// documents are left to right.
+	CTWritingDirection dir = kCTWritingDirectionLeftToRight;
+	CTParagraphStyleSetting ps[] = {{kCTParagraphStyleSpecifierBaseWritingDirection, sizeof dir, &dir}};
+	CTParagraphStyleRef pstyle = CTParagraphStyleCreate(ps, 1);
+	CFDictionarySetValue(a, kCTParagraphStyleAttributeName, pstyle);
+	CFRelease(pstyle);
 	if (s->superscript) {
 		double off = s->size * 0.35;
 		CFNumberRef n = CFNumberCreate(NULL, kCFNumberDoubleType, &off);

@@ -91,7 +91,7 @@ func (in *inliner) walk(nodes []markdown.Inline, c inlineCtx) {
 		case *markdown.Link:
 			cc := c
 			if clickable(v.Dest) {
-				cc.url, cc.link = v.Dest, true
+				cc.url, cc.link = linkTarget(v.Dest), true
 				cc.ts.color = in.th.Link
 			} else if v.Dest != "" {
 				in.warn("link_scheme", "the link to "+strconv.Quote(v.Dest)+" is shown as text: only http, https and mailto links are clickable")
@@ -149,6 +149,22 @@ func clickable(dest string) bool {
 	return strings.HasPrefix(d, "http://") || strings.HasPrefix(d, "https://") || strings.HasPrefix(d, "mailto:")
 }
 
+// linkTarget is the destination a link annotation gets: a mailto keeps only
+// its address, since a query can ask an old mail client to attach a local
+// file (?attach=/etc/passwd: independent review).
+func linkTarget(dest string) string {
+	if strings.HasPrefix(strings.ToLower(dest), "mailto:") {
+		if i := strings.IndexByte(dest, '?'); i >= 0 {
+			return dest[:i]
+		}
+	}
+	return dest
+}
+
+// PlainText returns inlines as plain text, as titles, captions and the table
+// of contents show them: code spans and raw HTML keep their text.
+func PlainText(nodes []markdown.Inline) string { return plain(nodes) }
+
 // plain returns inlines as plain text (image descriptions, captions, titles).
 func plain(nodes []markdown.Inline) string {
 	var b strings.Builder
@@ -170,6 +186,8 @@ func plain(nodes []markdown.Inline) string {
 				walk(v.Children)
 			case *markdown.Image:
 				walk(v.Alt)
+			case *markdown.RawHTML:
+				b.WriteString(v.Raw) // the text shows it; so do the contents and the title
 			case *markdown.SoftBreak, *markdown.HardBreak:
 				b.WriteString(" ")
 			}

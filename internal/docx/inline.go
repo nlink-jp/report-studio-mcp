@@ -74,7 +74,7 @@ func (f *flat) walk(nodes []markdown.Inline, r rpr, link int, url string) {
 				f.links++
 				rr := r
 				rr.style = "Hyperlink"
-				f.walk(v.Children, rr, f.links, v.Dest)
+				f.walk(v.Children, rr, f.links, linkTarget(v.Dest))
 				continue
 			}
 			if v.Dest != "" {
@@ -211,6 +211,18 @@ func wide(r rune) bool {
 
 // clickable reports whether a destination may become a hyperlink: http,
 // https and mailto only, the scheme in any case (RFP §2, links).
+// linkTarget is the destination a link annotation gets: a mailto keeps only
+// its address, since a query can ask an old mail client to attach a local
+// file (?attach=/etc/passwd: independent review).
+func linkTarget(dest string) string {
+	if strings.HasPrefix(strings.ToLower(dest), "mailto:") {
+		if i := strings.IndexByte(dest, '?'); i >= 0 {
+			return dest[:i]
+		}
+	}
+	return dest
+}
+
 func clickable(dest string) bool {
 	d := strings.ToLower(dest)
 	return strings.HasPrefix(d, "http://") || strings.HasPrefix(d, "https://") || strings.HasPrefix(d, "mailto:")
@@ -238,6 +250,8 @@ func plain(nodes []markdown.Inline) string {
 				walk(v.Children)
 			case *markdown.Image:
 				walk(v.Alt)
+			case *markdown.RawHTML:
+				b.WriteString(v.Raw)
 			case *markdown.SoftBreak, *markdown.HardBreak:
 				b.WriteString(" ")
 			}
