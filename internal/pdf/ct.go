@@ -162,40 +162,74 @@ type Line struct {
 
 // Typeset breaks spans into lines no wider than width.
 func (d *Doc) Typeset(spans []Span, width float64) []Line {
+	units := utf16Units(spans)
+	var lines []Line
+	// Core Text's line breaking slows with the length of what it is given
+	// (a 2 MiB paragraph took minutes: independent review), so the paragraph
+	// is set a window at a time. A window's last line may be cut by the
+	// window's end, so it is dropped and the next window starts there; a
+	// break depends only on its own line, so the result is the same.
+	for pos := 0; pos < len(units); {
+		end := min(pos+typesetWindow, len(units))
+		for end < len(units) && end > pos+1 && !units[end].first {
+			end-- // never split a surrogate pair
+		}
+		raw := d.typesetRaw(slice(units, pos, end), width)
+		if len(raw) == 0 {
+			break
+		}
+		if end < len(units) && len(raw) > 1 {
+			raw = raw[:len(raw)-1]
+		}
+		for _, l := range raw {
+			from := pos + int(l.start)
+			to := from + int(l.len)
+			lines = append(lines, Line{
+				Spans:   slice(units, from, to),
+				Start:   runeAt(units, from),
+				End:     runeAt(units, to),
+				Width:   float64(l.width),
+				Ascent:  float64(l.ascent),
+				Descent: float64(l.descent),
+				Leading: float64(l.leading),
+			})
+		}
+		last := raw[len(raw)-1]
+		pos += int(last.start + last.len)
+	}
+	return lines
+}
+
+// typesetWindow is how many UTF-16 units Core Text is given at once: dozens
+// of lines, so a window's dropped last line costs little. A variable so a
+// test can compare against the whole paragraph set at once.
+var typesetWindow = 4096
+
+// typesetRaw breaks spans into lines with Core Text, in UTF-16 offsets
+// relative to the spans.
+func (d *Doc) typesetRaw(spans []Span, width float64) []C.rs_line {
 	e := encode(spans)
 	defer e.free()
-	out := make([]C.rs_line, 16)
+	out := make([]C.rs_line, 64)
 	n := C.rs_typeset(d.d, e.text, e.runPtr(), C.int(len(e.runs)), C.double(width), &out[0], C.long(len(out)))
 	if n < 0 {
 		out = make([]C.rs_line, -n)
 		n = C.rs_typeset(d.d, e.text, e.runPtr(), C.int(len(e.runs)), C.double(width), &out[0], C.long(len(out)))
 	}
-	units := utf16Units(spans)
-	lines := make([]Line, int(n))
-	for i := range lines {
-		l := out[i]
-		lines[i] = Line{
-			Spans:   slice(units, int(l.start), int(l.start+l.len)),
-			Start:   runeAt(units, int(l.start)),
-			End:     runeAt(units, int(l.start+l.len)),
-			Width:   float64(l.width),
-			Ascent:  float64(l.ascent),
-			Descent: float64(l.descent),
-			Leading: float64(l.leading),
-		}
-	}
-	return lines
+	return out[:n]
 }
 
-// runeAt converts a UTF-16 offset into a rune index.
+// runeAt converts a UTF-16 offset into a rune index. Each unit carries its
+// rune's index, so this is constant time (counting from the start for every
+// line made long paragraphs quadratic: independent review).
 func runeAt(us []unit, off int) int {
-	n := 0
-	for i := 0; i < off && i < len(us); i++ {
-		if us[i].first {
-			n++
+	if off >= len(us) {
+		if len(us) == 0 {
+			return 0
 		}
+		return us[len(us)-1].idx + 1
 	}
-	return n
+	return us[max(off, 0)].idx
 }
 
 // unit is one UTF-16 code unit's worth of a span: the rune it belongs to is
@@ -204,16 +238,19 @@ type unit struct {
 	r     rune
 	first bool
 	style int
+	idx   int // index of the rune in the concatenated text
 }
 
 func utf16Units(spans []Span) []unit {
 	var us []unit
+	idx := 0
 	for _, s := range spans {
 		for _, r := range s.Text {
 			n := len(utf16.Encode([]rune{r}))
 			for k := 0; k < n; k++ {
-				us = append(us, unit{r: r, first: k == 0, style: s.Style})
+				us = append(us, unit{r: r, first: k == 0, style: s.Style, idx: idx})
 			}
+			idx++
 		}
 	}
 	return us

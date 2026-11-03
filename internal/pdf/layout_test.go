@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/chart"
 	md "github.com/nlink-jp/report-studio-mcp/internal/markdown"
@@ -401,5 +402,17 @@ func TestFrontPagesCountAgainstThePageLimit(t *testing.T) {
 	var e *Error
 	if _, err := Layout(d, doc, o); !errors.As(err, &e) || e.Code != "limit_exceeded" {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestDeadlineStopsTheLayout(t *testing.T) {
+	o := opts()
+	o.Deadline = time.Now().Add(-time.Second)
+	doc, _ := NewDoc(nil)
+	defer doc.Close()
+	_, err := Layout(sample(1), doc, o)
+	var e *Error
+	if !errors.As(err, &e) || e.Code != "limit_exceeded" || e.Details["limit"] != "time" {
+		t.Fatalf("err = %#v", err)
 	}
 }

@@ -127,6 +127,7 @@ func lineH(ln Line) float64 { return ln.Ascent + ln.Descent + ln.Leading }
 // row places one table row, continuing it on following pages when it is
 // taller than what is left of a fresh page.
 func (l *layouter) row(cells [][]Line, widths []float64, pad float64, align []markdown.Align, header bool) {
+	l.checkTime()
 	th := l.th
 	need := 0.0
 	for _, lines := range cells {

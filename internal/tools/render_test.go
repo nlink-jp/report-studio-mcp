@@ -322,3 +322,12 @@ func TestRenderWritesAWordDocument(t *testing.T) {
 	}
 	// Metadata hygiene is checked on the unpacked parts in internal/docx.
 }
+
+// A source PNG goes into the .docx as it is.
+func TestDocxReusesTheSourcePNG(t *testing.T) {
+	src := smallPNG(t)
+	p, err := toDocx(pdf.Picture{PW: 40, PH: 20, DispW: 40, Pix: make([]byte, 40*20*4), Orig: src}, 400)
+	if err != nil || !bytes.Equal(p.PNG, src) || p.WidthPt != 40 || p.HeightPt != 20 {
+		t.Fatalf("%v %v", p.WidthPt, err)
+	}
+}

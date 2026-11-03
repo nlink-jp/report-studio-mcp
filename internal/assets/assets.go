@@ -157,7 +157,11 @@ func Decode(data []byte, name string, side int, spend func(int) error) (pdf.Pict
 	}
 	rgba := image.NewRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
 	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
-	return pdf.Picture{Pix: rgba.Pix, PW: cfg.Width, PH: cfg.Height, DispW: float64(cfg.Width) * 72 / 150}, nil
+	pic := pdf.Picture{Pix: rgba.Pix, PW: cfg.Width, PH: cfg.Height, DispW: float64(cfg.Width) * 72 / 150}
+	if bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")) {
+		pic.Orig = data
+	}
+	return pic, nil
 }
 
 // resolve turns a destination into a path relative to the work directory:

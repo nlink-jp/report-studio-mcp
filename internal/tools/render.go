@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/assets"
 	"github.com/nlink-jp/report-studio-mcp/internal/chart"
@@ -184,6 +185,7 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot start typesetting: %v", err)
 	}
 	defer ctdoc.Close()
+	deadline := time.Now().Add(renderTimeBudget)
 	as := assets.New(d, filepath.ToSlash(filepath.Clean(a.Source)), assets.Limits{
 		ImageBytes: maxImageBytes, ImageSide: maxImageSide, Images: maxImages,
 		Diagrams: maxDiagrams, PixelBudget: pixelBudget,
@@ -200,6 +202,7 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		Cover:          cover,
 		TOC:            toc,
 		Logo:           logo,
+		Deadline:       deadline,
 	})
 	if err != nil {
 		return nil, stopError(err)
@@ -216,7 +219,7 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 			})
 		case "docx":
 			var more []markdown.Warning
-			data, more, err = docx.Write(doc, docxOptions(doc, th, cover, toc, logo, as, ctdoc, chartLimits))
+			data, more, err = docx.Write(doc, docxOptions(doc, th, cover, toc, logo, as, ctdoc, chartLimits, deadline))
 			warns = mergeWarnings(warns, more)
 		}
 		if err != nil {

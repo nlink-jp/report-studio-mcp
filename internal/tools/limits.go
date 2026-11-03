@@ -1,5 +1,7 @@
 package tools
 
+import "time"
+
 // Limits on one render. The values are phase 0's initial ones
 // (docs/ja/phase0-criteria.ja.md, P0-4): a manuscript at every limit was
 // predicted to take about 12 s, well inside gem-agent's 60 s call timeout.
@@ -18,4 +20,6 @@ const (
 	pixelBudget        = 100_000_000
 	maxOutputBytes     = 512 << 20
 	defaultMaxWarnings = 50
+	// renderTimeBudget leaves a 60 s client timeout room for the reply.
+	renderTimeBudget = 45 * time.Second
 )

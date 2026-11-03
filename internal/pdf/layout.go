@@ -5,6 +5,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/chart"
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
@@ -16,6 +18,9 @@ type Picture struct {
 	Pix    []byte
 	PW, PH int
 	DispW  float64
+	// Orig is the source PNG when the picture came from one, so the .docx
+	// can embed it as it is instead of encoding the pixels again.
+	Orig []byte
 }
 
 // Assets resolves what a manuscript refers to. An image that cannot be had
@@ -52,6 +57,10 @@ type Options struct {
 	Cover, TOC bool
 	// Logo goes on the cover when non-nil.
 	Logo *Picture
+	// Deadline, when set, stops a layout still running at that time: a
+	// manuscript within every limit must not hold the server past the
+	// client's timeout.
+	Deadline time.Time
 }
 
 // Result is a laid-out document.
@@ -375,6 +384,7 @@ func (l *layouter) text(rs []rich, size float64, gapEm float64, align int) {
 	spans := l.spans(rs)
 	lines := l.doc.Typeset(spans, l.w)
 	gap := size * gapEm
+	decos := decorations(rs)
 	for _, ln := range lines {
 		h := ln.Ascent + ln.Descent
 		l.ensure(h)
@@ -386,7 +396,7 @@ func (l *layouter) text(rs []rich, size float64, gapEm float64, align int) {
 		case 2:
 			x += l.w - ln.Width
 		}
-		l.decorate(rs, ln, x, base)
+		decos = l.decorate(decos, ln, x, base)
 		if len(ln.Spans) > 0 {
 			l.add(TextOp{Spans: ln.Spans, X: x, Y: base, W: ln.Width, Asc: ln.Ascent, Desc: ln.Descent})
 		}
@@ -397,15 +407,42 @@ func (l *layouter) text(rs []rich, size float64, gapEm float64, align int) {
 	l.y -= gap
 }
 
-// decorate adds what styles cannot carry for one line: code backgrounds
-// (before the text, so behind it), strike lines and link rectangles.
-func (l *layouter) decorate(rs []rich, ln Line, x, base float64) {
+// deco is a piece of rich text that needs drawing beyond its style, with
+// the runes [start, end) it covers.
+type deco struct {
+	r          rich
+	start, end int
+}
+
+// decorations lists, in order, the pieces of rs that decorate.
+func decorations(rs []rich) []deco {
+	var out []deco
 	at := 0
 	for _, r := range rs {
-		n := len([]rune(r.text))
-		from, to := max(at, ln.Start), min(at+n, ln.End)
+		n := utf8.RuneCountInString(r.text)
+		if r.code || r.strike || r.url != "" {
+			out = append(out, deco{r, at, at + n})
+		}
 		at += n
-		if from >= to || !(r.code || r.strike || r.url != "") {
+	}
+	return out
+}
+
+// decorate adds what styles cannot carry for one line: code backgrounds
+// (before the text, so behind it), strike lines and link rectangles. Lines
+// come in order, so the pieces wholly before this line are dropped and the
+// rest returned for the next: linear in the paragraph, not quadratic.
+func (l *layouter) decorate(ds []deco, ln Line, x, base float64) []deco {
+	for len(ds) > 0 && ds[0].end <= ln.Start {
+		ds = ds[1:]
+	}
+	for _, d := range ds {
+		if d.start >= ln.End {
+			break
+		}
+		r := d.r
+		from, to := max(d.start, ln.Start), min(d.end, ln.End)
+		if from >= to {
 			continue
 		}
 		x0 := x + l.doc.OffsetAt(ln.Spans, from-ln.Start)
@@ -425,6 +462,7 @@ func (l *layouter) decorate(rs []rich, ln Line, x, base float64) {
 			l.add(LinkOp{X: x0, Y: base - ln.Ascent, W: x1 - x0, H: ln.Ascent + ln.Descent, URL: r.url})
 		}
 	}
+	return ds
 }
 
 // drawMarker places a pending list marker beside the line whose baseline is
@@ -458,7 +496,16 @@ func (l *layouter) blocks(bs []markdown.Block, ts textStyle, tight bool) {
 	}
 }
 
+// checkTime stops the layout past its deadline.
+func (l *layouter) checkTime() {
+	if !l.o.Deadline.IsZero() && time.Now().After(l.o.Deadline) {
+		l.fail(l.line, "limit_exceeded", "the document takes longer to typeset than a call may last; split it or shorten it",
+			map[string]any{"limit": "time"})
+	}
+}
+
 func (l *layouter) block(b markdown.Block, ts textStyle, tight bool) {
+	l.checkTime()
 	after := ts.size * 0.75
 	if tight {
 		after = ts.size * 0.2
