@@ -23,6 +23,8 @@ const (
 	// maxAutocompleted bounds the empty cells added to pad short table rows
 	// (cmark-gfm's MAX_AUTOCOMPLETED_CELLS). A wide header followed by many
 	// one-cell rows would otherwise make the tree quadratic in the input.
+	// The bound is for the whole document, not per table: 410 tables of 627
+	// columns each stayed under a per-table bound and allocated gigabytes.
 	maxAutocompleted = 0x80000
 )
 
@@ -89,9 +91,8 @@ type bnode struct {
 
 	label string // footnote definition
 
-	align         []Align // table
-	rows          []tableRow
-	autocompleted int
+	align []Align // table
+	rows  []tableRow
 }
 
 func (b *bnode) lastChild() *bnode {
@@ -139,6 +140,7 @@ type blockParser struct {
 	refs                 map[string]linkRef
 	footnotes            map[string]*bnode
 	ext                  bool // GFM tables, task lists, footnote definitions
+	autocompleted        int  // table cells padded so far, whole document
 }
 
 func newBlockParser(firstLine int) *blockParser {
@@ -343,10 +345,11 @@ func (p *blockParser) incorporateLine(ln string) {
 		}
 	case p.offset < len(ln) && !p.blank:
 		if t == bTable {
-			if container.autocompleted <= maxAutocompleted {
-				p.addTableRow(container)
+			if p.addTableRow(container) {
 				return
 			}
+			// Padding this row would pass the document's bound: the table
+			// ends and the line is a paragraph.
 			p.finalize(container, p.lineNumber-1)
 		}
 		p.addChild(bParagraph)
@@ -735,6 +738,17 @@ func (p *blockParser) finalizeParagraph(b *bnode) {
 			b.parent.task = &checked
 			content = content[n:]
 			stripped = true
+			// A marker alone on the item's first line leaves that line
+			// empty: the text starts on the next one. The content keeps its
+			// line ending (link reference definitions are still not taken
+			// from it); inlines are trimmed of it.
+			k := 0
+			for k < len(content) && isSpaceOrTab(content[k]) {
+				k++
+			}
+			if k < len(content) && content[k] == '\n' {
+				b.contentLine++
+			}
 		}
 	}
 	content = p.extractRefDefs(b, content)
@@ -989,15 +1003,22 @@ func (p *blockParser) openTable(para *bnode, aligns []Align) bool {
 	return true
 }
 
-func (p *blockParser) addTableRow(t *bnode) {
+// addTableRow adds the line as a row, or reports false when the row is short
+// and padding it would pass maxAutocompleted. Only the cells written are kept
+// here; the converter pads the row to len(t.align) with nil cells, so a padded
+// cell costs one slice element and nothing more.
+func (p *blockParser) addTableRow(t *bnode) bool {
 	cells, _ := parseTableRow(p.line[p.offset:])
 	n := len(t.align)
 	if len(cells) > n {
 		cells = cells[:n]
 	}
-	for len(cells) < n {
-		cells = append(cells, "")
-		t.autocompleted++
+	if pad := n - len(cells); pad > 0 {
+		if p.autocompleted+pad > maxAutocompleted {
+			return false
+		}
+		p.autocompleted += pad
 	}
 	t.rows = append(t.rows, tableRow{cells: cells, line: p.lineNumber})
+	return true
 }

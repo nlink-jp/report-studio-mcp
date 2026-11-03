@@ -210,6 +210,14 @@ func normalizeURI(s string) string {
 // key (§4.7): Unicode case fold, trim, and collapse internal whitespace.
 func normalizeLabel(s string) string {
 	s = trimSpaceTab(s)
+	if k := asciiLabelKey(s); k != "" || s == "" {
+		return k
+	}
+	return foldLabel(s)
+}
+
+// foldLabel is normalizeLabel for any trimmed label, ASCII or not.
+func foldLabel(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	space := false
@@ -231,6 +239,46 @@ func normalizeLabel(s string) string {
 		b.WriteRune(foldRune(r))
 	}
 	return b.String()
+}
+
+// asciiLabelKey is normalizeLabel's fast path for an all-ASCII label that is
+// already trimmed: it returns "" when s holds a non-ASCII byte. A label that
+// is already its own key (lower case, single spaces) is returned without
+// copying.
+func asciiLabelKey(s string) string {
+	same := true
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= utf8.RuneSelf:
+			return ""
+		case c >= 'A' && c <= 'Z', c == '\t' || c == '\n' || c == '\r':
+			same = false
+		case c == ' ' && i > 0 && s[i-1] == ' ':
+			same = false
+		}
+	}
+	if same {
+		return s
+	}
+	b := make([]byte, 0, len(s))
+	space := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			space = true
+			continue
+		}
+		if space {
+			b = append(b, ' ')
+			space = false
+		}
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b = append(b, c)
+	}
+	return string(b)
 }
 
 // foldRune is simple case folding to a canonical member of the rune's case

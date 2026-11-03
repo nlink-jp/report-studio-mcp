@@ -53,6 +53,56 @@ func TestFootnotes(t *testing.T) {
 		{"emphasis inside the label does not leak",
 			"a[^x*y] *b*\n\n[^x*y]: n\n",
 			`p@1("a" fnref1(x*y) " " em("b")) [fn1 x*y](p@3("n"))`},
+		{"inside an image description: literal text, definition dropped",
+			"x ![a[^1]](i.png)\n\n[^1]: n\n",
+			`p@1("x " img[i.png]("a[^1]"))`},
+		{"inside an image description and outside it",
+			"![a[^1] *e*](i.png) b[^1]\n\n[^1]: n\n",
+			`p@1(img[i.png]("a[^1] " em("e")) " b" fnref1(1)) [fn1 1](p@3("n"))`},
+		{"a label with whitespace matches no definition",
+			"x[^ 1] y[^1 ]\n\n[^1]: n\n",
+			`p@1("x[^ 1] y[^1 ]")`},
+		{"an escaped bracket may stand in a label",
+			"x[^a\\[b]\n\n[^a\\[b]: n\n",
+			`p@1("x" fnref1(a\[b)) [fn1 a\[b](p@3("n"))`},
+		{"nested openers: only the innermost is a reference",
+			"[^[^1]]\n\n[^1]: n\n",
+			`p@1("[^" fnref1(1) "]") [fn1 1](p@3("n"))`},
+	})
+}
+
+// Footnote definitions inside list items and block quotes are hoisted into
+// Document.Footnotes; what they leave empty is dropped, and the lists that
+// remain keep their lines and tightness as the remaining items show them.
+func TestHoistedFootnoteDefinitions(t *testing.T) {
+	runExtCases(t, []extCase{
+		{"in a list item and a block quote",
+			"- [^1]: in list\n\n> [^2]: q\n\nx[^1][^2]\n",
+			`p@5("x" fnref1(1) fnref2(2)) [fn1 1](p@1("in list")) [fn2 2](p@3("q"))`},
+		{"first item dropped: the list starts at the next",
+			"- [^1]: a\n- b\n- c\n\nx[^1]\n",
+			`ul@2(li@2(p@2("b")) li@3(p@3("c"))) p@5("x" fnref1(1)) [fn1 1](p@1("a"))`},
+		{"a blank line only after the dropped item: tight",
+			"- [^1]: a\n\n- b\n- c\n\nx[^1]\n",
+			`ul@3(li@3(p@3("b")) li@4(p@4("c"))) p@6("x" fnref1(1)) [fn1 1](p@1("a"))`},
+		{"a blank line between remaining items across a dropped one: loose",
+			"- a\n- [^1]: x\n\n- b\n\ny[^1]\n",
+			`ul:loose@1(li@1(p@1("a")) li@4(p@4("b"))) p@6("y" fnref1(1)) [fn1 1](p@2("x"))`},
+		{"definition after a paragraph in an item, list stays loose",
+			"- a\n\n  [^1]: n\n- b\n\nx[^1]\n",
+			`ul:loose@1(li@1(p@1("a")) li@4(p@4("b"))) p@6("x" fnref1(1)) [fn1 1](p@3("n"))`},
+		{"definition at the end of the last item: tight",
+			"- a\n- b\n\n  [^1]: n\n\nx[^1]\n",
+			`ul@1(li@1(p@1("a")) li@2(p@2("b"))) p@6("x" fnref1(1)) [fn1 1](p@4("n"))`},
+		{"quote in an item holding only a definition",
+			"- > [^1]: q\n- b\n\nx[^1]\n",
+			`ul@2(li@2(p@2("b"))) p@4("x" fnref1(1)) [fn1 1](p@1("q"))`},
+		{"unreferenced definition in a quote: the quote still goes",
+			"> [^u]: never\n\ntext\n",
+			`p@3("text")`},
+		{"empty items written as such stay",
+			"- \n- [ ]\n> \n",
+			`ul@1(li@1() li[ ]@2()) quote@3()`},
 	})
 }
 
@@ -156,7 +206,65 @@ func TestExtendedAutolinks(t *testing.T) {
 		{"two emails, a failing one between",
 			"a@b.c d@e f@g.h\n",
 			`p@1(auto[mailto:a@b.c]("a@b.c") " d@e " auto[mailto:f@g.h]("f@g.h"))`},
+		{"defanged indicators are not links",
+			"user@mail.evil[.]com https://login.evil.co[.]uk/path www.evil.example[.]com\n",
+			`p@1("user@mail.evil[.]com https://login.evil.co[.]uk/path www.evil.example[.]com")`},
+		{"defanged with parentheses, a bracketed at, a dot before the bracket",
+			"www.evil(.)com a@b.evil(.)com https://x.evil(.)com/p a@mail.evil.[.]com http://evil[:]8080 a@evil.com[@]x\n",
+			`p@1("www.evil(.)com a@b.evil(.)com https://x.evil(.)com/p a@mail.evil.[.]com http://evil[:]8080 a@evil.com[@]x")`},
+		{"ordinary neighbours still link",
+			"see https://example.com. (https://example.com) www.example.com/a[1] mail a@b.com, or https://example.com/(x)\n",
+			`p@1("see " auto[https://example.com]("https://example.com") ". (" auto[https://example.com]("https://example.com") ") " auto[http://www.example.com/a%5B1%5D]("www.example.com/a[1]") " mail " auto[mailto:a@b.com]("a@b.com") ", or " auto[https://example.com/(x)]("https://example.com/(x)"))`},
+		{"explicit links and <> autolinks are not affected",
+			"[x](https://evil[.]com) <https://evil.com>[.]\n",
+			`p@1(a[https://evil%5B.%5Dcom]("x") " " auto[https://evil.com]("https://evil.com") "[.]")`},
 	})
+}
+
+// A marker alone on a task item's first line: the text, and what is reported
+// about it, are on the next line.
+func TestTaskMarkerAloneOnItsLine(t *testing.T) {
+	for _, in := range []string{"- [ ]\n  <i>\n", "- [x] \t\n  <i>\n"} {
+		d := Parse([]byte(in))
+		want := `ul@1(li` + map[bool]string{true: "[x]", false: "[ ]"}[strings.Contains(in, "[x]")] + `@1(p@2(rawhtml("<i>"))))`
+		if got := dump(d); got != want {
+			t.Errorf("%q: want %s\ngot  %s", in, want, got)
+		}
+		if got := warningKeys(d); !reflect.DeepEqual(got, []string{"2:raw_html"}) {
+			t.Errorf("%q: warnings %v", in, got)
+		}
+	}
+	// A reference definition on the next line stays text, as before.
+	if got, want := dump(Parse([]byte("- [ ]\n  [a]: /u\n"))), `ul@1(li[ ]@1(p@2("[a]: /u")))`; got != want {
+		t.Errorf("want %s\ngot  %s", want, got)
+	}
+}
+
+// normalizeLabel's ASCII fast path agrees with the general folding on every
+// short string over an alphabet of the cases that matter.
+func TestNormalizeLabelASCIIFastPath(t *testing.T) {
+	const alphabet = "aZ \t\n\r\f-[]"
+	var gen func(prefix string, n int)
+	count := 0
+	gen = func(prefix string, n int) {
+		count++
+		if got, want := normalizeLabel(prefix), foldLabel(trimSpaceTab(prefix)); got != want {
+			t.Fatalf("%q: fast %q, general %q", prefix, got, want)
+		}
+		if n == 0 {
+			return
+		}
+		for i := 0; i < len(alphabet); i++ {
+			gen(prefix+alphabet[i:i+1], n-1)
+		}
+	}
+	gen("", 4)
+	if count < 10000 {
+		t.Fatalf("only %d strings", count)
+	}
+	if got := normalizeLabel("Straße  X"); got != "strasse x" {
+		t.Errorf("non-ASCII label: %q", got)
+	}
 }
 
 func TestFrontMatter(t *testing.T) {
@@ -177,12 +285,28 @@ func TestFrontMatter(t *testing.T) {
 			``,
 			map[string]string{"title": "T", "subtitle": "S", "author": "A", "date": "2026-11-03", "classification": "社外秘", "profile": "formal", "cover": "true", "toc": "false"},
 			nil},
-		{"no closing line: plain Markdown",
+		{"no closing line: plain Markdown, reported when a known key follows",
 			"---\ntitle: x\n# no closing\n",
-			`hr@1() p@2("title: x") h1@3("no closing")`, map[string]string{}, nil},
-		{"first line must be exactly ---",
-			"--- \ntitle: x\n---\n",
+			`hr@1() p@2("title: x") h1@3("no closing")`, map[string]string{},
+			[]string{"1:unclosed_front_matter"}},
+		{"no closing line and no key: plain Markdown, nothing reported",
+			"---\nsome text\n",
+			`hr@1() p@2("some text")`, map[string]string{}, nil},
+		{"no closing line, an unknown key: not reported",
+			"---\nfoo: x\n",
+			`hr@1() p@2("foo: x")`, map[string]string{}, nil},
+		{"fences may have trailing spaces and tabs",
+			"--- \ntitle: T\n---\t \n# x\n",
+			`h1@4("x")`, map[string]string{"title": "T"}, nil},
+		{"a fence is three hyphens, no more",
+			"----\ntitle: x\n----\n",
 			`hr@1() h2@2("title: x")`, map[string]string{}, nil},
+		{"duplicate key: reported, the later value wins",
+			"---\ntitle: one\nTitle: two\n---\n",
+			``, map[string]string{"title": "two"}, []string{"3:duplicate_front_matter_key"}},
+		{"NUL in a value",
+			"---\ntitle: a\x00b\n---\n",
+			``, map[string]string{"title": "a�b"}, nil},
 		{"only on the first line",
 			"\n---\ntitle: x\n---\n",
 			`hr@2() h2@3("title: x")`, map[string]string{}, nil},

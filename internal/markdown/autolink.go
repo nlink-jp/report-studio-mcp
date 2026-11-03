@@ -32,7 +32,7 @@ func (ip *inlineParser) parseExtAutolink() bool {
 		domainFrom = 0 // "www." is the domain's first segment
 	}
 	d := scanDomain(s, domainFrom, prefixLen)
-	if d < 0 {
+	if d < 0 || defangedAfter(s, d) {
 		return false
 	}
 	e := d
@@ -47,6 +47,16 @@ func (ip *inlineParser) parseExtAutolink() bool {
 	ip.addAutolink(normalizeURI(scheme+text), text)
 	ip.pos += e
 	return true
+}
+
+// defangedAfter reports whether the domain that ends at s[end] runs on into
+// a bracket or parenthesis, as defanged indicators do in security reports
+// ("evil[.]com", "evil(.)com", "user[@]host"). Such a domain is not made a
+// link: the link would point at a truncated or different host
+// ("user@mail.evil[.]com" would become mailto:user@mail.evil). Explicit links
+// and <...> autolinks are not affected.
+func defangedAfter(s string, end int) bool {
+	return end < len(s) && (s[end] == '[' || s[end] == '(')
 }
 
 // scanDomain reads a valid domain starting at s[from]; at least one domain
@@ -239,6 +249,11 @@ func findEmails(t string) []emailSpan {
 			}
 		}
 		if np == 0 || t[e-1] == '-' || t[e-1] == '_' || e < len(t) && t[e] == '@' {
+			continue
+		}
+		// The domain loop stops before a '.' that no alphanumeric follows,
+		// so "a@mail.evil.[.]com" ends at "evil" with ".[" after it.
+		if k := e + strings.IndexFunc(t[e:], func(r rune) bool { return r != '.' }); k >= e && defangedAfter(t, k) {
 			continue
 		}
 		if proto == "xmpp" && e+1 < len(t) && t[e] == '/' {

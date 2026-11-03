@@ -44,6 +44,11 @@ func FuzzParse(f *testing.F) {
 				t.Fatalf("bad warning %+v (input has %d lines)", w, lines)
 			}
 		}
+		for k, v := range d.Meta {
+			if !utf8.ValidString(v) || bytes.IndexByte([]byte(v), 0) >= 0 {
+				t.Fatalf("meta %s = %q", k, v)
+			}
+		}
 		for i, fn := range d.Footnotes {
 			if fn.Index != i+1 {
 				t.Fatalf("footnote %d has index %d", i, fn.Index)
@@ -104,6 +109,9 @@ func checkTree(t *testing.T, d *Document, nfn int) {
 				}
 				blocks(b.Children)
 			case *List:
+				if len(b.Items) == 0 {
+					t.Fatal("list without items")
+				}
 				for _, it := range b.Items {
 					blocks(it.Children)
 				}

@@ -10,8 +10,9 @@ import (
 // Parse reads a manuscript. It never fails: whatever cannot be shown
 // faithfully is reported in Document.Warnings.
 //
-// Before parsing, invalid UTF-8 becomes U+FFFD (as cmark does) and a leading
-// byte order mark is dropped, so every string in the tree is valid UTF-8.
+// Before parsing, invalid UTF-8 and NUL become U+FFFD (as cmark does) and a
+// leading byte order mark is dropped, so every string in the tree, Meta
+// included, is valid UTF-8 without NUL.
 func Parse(src []byte) *Document {
 	return parse(src, true)
 }
@@ -25,6 +26,11 @@ func parse(src []byte, ext bool) *Document {
 		s = strings.ToValidUTF8(s, "\uFFFD")
 	}
 	s = strings.TrimPrefix(s, "\uFEFF")
+	// Spec section 2.3 insecure characters, before the front matter is read: its values
+	// reach the cover and the document properties too.
+	if strings.IndexByte(s, 0) >= 0 {
+		s = strings.ReplaceAll(s, "\x00", "\uFFFD")
+	}
 
 	doc := &Document{Meta: map[string]string{}}
 	c := &converter{doc: doc, ext: ext, fnIndex: map[*bnode]int{}}
@@ -55,8 +61,10 @@ var frontMatterKeys = map[string]bool{
 }
 
 // frontMatter takes a front matter block off the start of s: a first line
-// that is exactly "---", single-level "key: value" lines, and a closing line
-// that is exactly "---". Without the closing line there is no front matter.
+// that is "---", single-level "key: value" lines, and a closing line "---";
+// either fence may have trailing spaces or tabs. Without the closing line
+// there is no front matter; when the second line still looks like a known
+// "key: value", that is reported, since the author most likely meant one.
 // It returns the body and the manuscript line the body starts on.
 func (c *converter) frontMatter(s string) (string, int) {
 	type line struct {
@@ -79,10 +87,10 @@ func (c *converter) frontMatter(s string) (string, int) {
 		}
 		switch {
 		case n == 1:
-			if text != "---" {
+			if !isFrontMatterFence(text) {
 				return s, 1
 			}
-		case text == "---":
+		case isFrontMatterFence(text):
 			for _, l := range lines {
 				c.frontMatterLine(l.text, l.n)
 			}
@@ -92,7 +100,17 @@ func (c *converter) frontMatter(s string) (string, int) {
 		}
 		pos = next
 	}
+	if len(lines) > 0 {
+		if key, _, ok := splitFrontMatterLine(lines[0].text); ok && frontMatterKeys[strings.ToLower(key)] {
+			c.warn(1, "unclosed_front_matter", "front matter opened by \"---\" on line 1 is never closed by another \"---\" line, so it is read as Markdown")
+		}
+	}
 	return s, 1
+}
+
+// isFrontMatterFence: "---" with nothing after it but spaces or tabs.
+func isFrontMatterFence(text string) bool {
+	return strings.HasPrefix(text, "---") && strings.Trim(text[3:], " \t") == ""
 }
 
 func (c *converter) frontMatterLine(text string, n int) {
@@ -108,6 +126,9 @@ func (c *converter) frontMatterLine(text string, n int) {
 	if !frontMatterKeys[key] {
 		c.warn(n, "unknown_front_matter_key", fmt.Sprintf("front matter key %q is not one of title, subtitle, author, date, classification, profile, cover, toc", key))
 		return
+	}
+	if _, dup := c.doc.Meta[key]; dup {
+		c.warn(n, "duplicate_front_matter_key", fmt.Sprintf("front matter key %q is given again; this later value is used", key))
 	}
 	c.doc.Meta[key] = value
 }
@@ -150,6 +171,7 @@ type converter struct {
 	warnings []Warning
 	fnIndex  map[*bnode]int
 	fnQueue  []*bnode
+	inImage  int // image descriptions being converted
 }
 
 func (c *converter) warn(line int, code, msg string) {
@@ -183,22 +205,24 @@ func (c *converter) block(n *bnode, top bool) Block {
 				return a
 			}
 		}
-		return &BlockQuote{Children: c.blocks(n.children, false), Line: Line(n.startLine)}
-	case bList:
-		l := &List{Ordered: n.list.ordered, Start: n.list.start, Tight: n.list.tight, Line: Line(n.startLine)}
-		for _, it := range n.children {
-			l.Items = append(l.Items, &ListItem{Task: it.task, Children: c.blocks(it.children, false), Line: Line(it.startLine)})
+		children := c.blocks(n.children, false)
+		if len(children) == 0 && len(n.children) > 0 {
+			return nil // it held only footnote definitions, now hoisted
 		}
-		return l
+		return &BlockQuote{Children: children, Line: Line(n.startLine)}
+	case bList:
+		return c.list(n)
 	case bCodeBlock:
 		return &CodeBlock{Fenced: n.fenced, Info: n.info, Text: n.literal, Line: Line(n.startLine)}
 	case bHTMLBlock:
 		c.warn(n.startLine, "raw_html", "raw HTML block is shown as text")
 		return &HTMLBlock{Raw: n.literal, Line: Line(n.startLine)}
 	case bTable:
-		t := &Table{Align: n.align, Line: Line(n.startLine)}
+		t := &Table{Align: n.align, Line: Line(n.startLine), Rows: make([][][]Inline, 0, len(n.rows)-1)}
 		for k, row := range n.rows {
-			cells := make([][]Inline, len(row.cells))
+			// Short rows were stored without their padding; the cells past
+			// the written ones stay nil (an empty cell).
+			cells := make([][]Inline, len(n.align))
 			for i, cell := range row.cells {
 				cells[i] = c.inlines(cell, row.line)
 			}
@@ -211,6 +235,92 @@ func (c *converter) block(n *bnode, top bool) Block {
 		return t
 	}
 	return nil // footnote definitions are hoisted into Document.Footnotes
+}
+
+// list converts a list. Footnote definitions inside it are hoisted into
+// Document.Footnotes; an item left with nothing is dropped, and so is a list
+// left with no item. When anything was dropped, tightness is decided again
+// over what remains (see keptTight). An item that was empty in the
+// manuscript ("- ", "- [ ]") stays.
+func (c *converter) list(n *bnode) Block {
+	l := &List{Ordered: n.list.ordered, Start: n.list.start, Tight: n.list.tight}
+	keepItem := make([]bool, len(n.children))
+	keepChild := make([][]bool, len(n.children))
+	dropped := false
+	for i, it := range n.children {
+		var children []Block
+		keep := make([]bool, len(it.children))
+		for j, ch := range it.children {
+			if b := c.block(ch, false); b != nil {
+				children = append(children, b)
+				keep[j] = true
+			} else {
+				dropped = true
+			}
+		}
+		keepChild[i] = keep
+		if len(children) == 0 && len(it.children) > 0 {
+			continue
+		}
+		keepItem[i] = true
+		if l.Items == nil {
+			l.Line = Line(it.startLine)
+		}
+		l.Items = append(l.Items, &ListItem{Task: it.task, Children: children, Line: Line(it.startLine)})
+	}
+	if len(l.Items) == 0 {
+		return nil
+	}
+	if dropped {
+		l.Tight = keptTight(n.children, keepItem, keepChild)
+	}
+	return l
+}
+
+// keptTight is listIsTight over the items and children that remain after
+// footnote definitions were hoisted out. A dropped block is transparent: a
+// blank line before or after it still separates the blocks that remain on
+// either side, but one at the very end of the list separates nothing.
+func keptTight(items []*bnode, keepItem []bool, keepChild [][]bool) bool {
+	lastItem := -1
+	for i := range items {
+		if keepItem[i] {
+			lastItem = i
+		}
+	}
+	gap := false  // a blank line follows the last item kept so far
+	seen := false // an item was kept
+	for i, it := range items {
+		if !keepItem[i] {
+			// The blank line may be recorded on the item or on its last
+			// block (a footnote definition keeps it on itself).
+			gap = gap || seen && (it.lastLineBlank || endsWithBlankLine(it.lastChild()))
+			continue
+		}
+		seen = true
+		if gap {
+			return false
+		}
+		gap = it.lastLineBlank
+		// Within the item: a blank line after a child counts unless nothing
+		// visible follows it in the list.
+		pending, seenKept := false, false
+		for j, ch := range it.children {
+			if keepChild[i][j] {
+				if pending {
+					return false
+				}
+				seenKept = true
+			}
+			if seenKept && endsWithBlankLine(ch) {
+				pending = true
+			}
+		}
+		if pending && i != lastItem {
+			return false
+		}
+	}
+	return true
 }
 
 var alertKinds = map[string]AlertKind{
@@ -289,6 +399,17 @@ func (c *converter) inlineList(first *inode) []Inline {
 				tb.WriteString(n.lit)
 				pending = true
 			}
+		case iFootnoteRef:
+			if c.inImage > 0 {
+				// An image description is shown as plain text, where a
+				// reference could not be seen: it stays the text it was,
+				// as for an undefined label, and numbers no footnote.
+				tb.WriteString("[^" + unescapeString(n.lit) + "]")
+				pending = true
+				break
+			}
+			flush()
+			out = append(out, c.inline(n))
 		default:
 			flush()
 			out = append(out, c.inline(n))
@@ -316,7 +437,10 @@ func (c *converter) inline(n *inode) Inline {
 	case iLink:
 		return &Link{Dest: n.dest, Title: n.title, Children: c.inlineList(n.first), Autolink: n.autolink}
 	case iImage:
-		return &Image{Dest: n.dest, Title: n.title, Alt: c.inlineList(n.first)}
+		c.inImage++
+		alt := c.inlineList(n.first)
+		c.inImage--
+		return &Image{Dest: n.dest, Title: n.title, Alt: alt}
 	case iHTML:
 		c.warn(n.line, "raw_html", "inline raw HTML is shown as text")
 		return &RawHTML{Raw: n.lit}

@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,8 @@ func pathologicalInputs() []struct{ name, in string } {
 		{"many footnote references", rep("x[^1]", 300000) + "\n\n[^1]: n\n"},
 		{"many footnote definitions", rep("[^a]: b\n", 200000)},
 		{"undefined footnote references", rep("[^nope]", 200000)},
+		{"nested footnote openers", rep(rep("[^", 1300)+rep("]", 1300)+" ", (2<<20)/3901)},
+		{"long footnote labels", rep("[^"+rep("a", 3990)+"]", 500)},
 		{"many setext lines", rep("a\n=\n", 400000)},
 		{"many fences", rep("```\n", 400000)},
 		{"many html blocks", rep("<div>\n\n", 250000)},
@@ -182,6 +185,57 @@ func TestTableAutocompleteBound(t *testing.T) {
 	}
 	if len(d.Children) != 2 {
 		t.Errorf("want table and paragraph, got %d blocks", len(d.Children))
+	}
+}
+
+// TestTableAutocompleteDocumentWide: the padding bound is shared by every
+// table of the document, so many tables with a wide header and short rows
+// cannot add up (410 tables of 627 columns once allocated about 5 GB). The
+// tree still keeps its promise of len(Align) cells per row; rows that would
+// need padding past the bound end their table.
+func TestTableAutocompleteDocumentWide(t *testing.T) {
+	in := rep(rep("|a", 627)+"\n"+rep("|-", 627)+"\n"+rep("|x\n", 836)+"\n", 410)
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	start := time.Now()
+	d := Parse([]byte(in))
+	elapsed := time.Since(start)
+	runtime.ReadMemStats(&after)
+	alloc := after.TotalAlloc - before.TotalAlloc
+	t.Logf("%.2f MiB input: %v, %.1f MiB allocated", float64(len(in))/(1<<20), elapsed.Round(time.Millisecond), float64(alloc)/(1<<20))
+	if alloc > 500<<20 {
+		t.Errorf("allocated %d MiB (bound 500 MiB)", alloc>>20)
+	}
+	if elapsed > pathologicalBound {
+		t.Errorf("took %v (bound %v)", elapsed, pathologicalBound)
+	}
+	tables, padded := 0, 0
+	for _, b := range d.Children {
+		tb, ok := b.(*Table)
+		if !ok {
+			continue
+		}
+		tables++
+		if len(tb.Header) != len(tb.Align) {
+			t.Fatalf("header has %d cells, %d columns", len(tb.Header), len(tb.Align))
+		}
+		for _, r := range tb.Rows {
+			if len(r) != len(tb.Align) {
+				t.Fatalf("row has %d cells, %d columns", len(r), len(tb.Align))
+			}
+			for _, c := range r {
+				if c == nil {
+					padded++
+				}
+			}
+		}
+	}
+	if tables != 410 {
+		t.Errorf("%d tables, want 410 (each header still makes one)", tables)
+	}
+	if padded > maxAutocompleted+627 {
+		t.Errorf("%d padded cells, bound %d", padded, maxAutocompleted)
 	}
 }
 

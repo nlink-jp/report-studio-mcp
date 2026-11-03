@@ -601,9 +601,14 @@ func (ip *inlineParser) parseCloseBracket() {
 			}
 		}
 	}
-	if !matched && ip.ext && !opener.image && opener.index+1 < len(s) && s[opener.index+1] == '^' {
+	// Footnote reference. A definition's label holds no whitespace and no
+	// ']' (scanFootnoteDefStart), and a reference label cannot hold an
+	// unescaped '[' (it would be another opener), so such labels are not
+	// normalized at all: nested "[^" openers would otherwise normalize a
+	// label of up to 4 KB at every ']'.
+	if !matched && ip.ext && !opener.image && !opener.bracketAfter && opener.index+1 < len(s) && s[opener.index+1] == '^' {
 		label := s[opener.index+2 : startpos-1]
-		if label != "" && len(label) <= 4*maxLinkLabel {
+		if label != "" && len(label) <= 4*maxLinkLabel && isFootnoteLabel(label) {
 			if def := ip.footnotes[normalizeLabel(label)]; def != nil {
 				for ip.delims != nil && ip.delims.pos > opener.index {
 					ip.removeDelim(ip.delims)
@@ -639,6 +644,19 @@ func (ip *inlineParser) parseCloseBracket() {
 	if !opener.image {
 		ip.linkBarrier = ip.bracketSeq
 	}
+}
+
+// isFootnoteLabel reports whether a reference's label could match a
+// definition: none of the bytes scanFootnoteDefStart stops at. (An escaped
+// "\[" may stand in both; an unescaped '[' is excluded by bracketAfter.)
+func isFootnoteLabel(label string) bool {
+	for i := 0; i < len(label); i++ {
+		switch label[i] {
+		case ' ', '\t', '\n', '\r', ']':
+			return false
+		}
+	}
+	return true
 }
 
 // parseAutolink reads a URI or email autolink (§6.5). As cmark does, entity
