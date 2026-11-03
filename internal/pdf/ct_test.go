@@ -3,6 +3,7 @@ package pdf
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"image/png"
 	"math"
 	"strings"
@@ -165,7 +166,10 @@ func TestPDFMetadataCarriesNothingElse(t *testing.T) {
 
 func TestBitmapDrawsWithTheSamePrimitives(t *testing.T) {
 	d := testDoc(t)
-	b := NewBitmap(d, 200, 100, 2) // 100 x 50 points at 2 px/pt
+	b, err := NewBitmap(d, 200, 100, 2) // 100 x 50 points at 2 px/pt
+	if err != nil {
+		t.Fatal(err)
+	}
 	b.FillRect(0, 0, 100, 50, [3]float64{1, 1, 1}, 0, RoundNone)
 	b.FillRect(10, 10, 20, 20, [3]float64{1, 0, 0}, 0, RoundNone)
 	pix := b.Pixels()
@@ -243,6 +247,35 @@ func TestBuiltinProfileFontsAreInstalled(t *testing.T) {
 	}
 }
 
+func TestBitmapRefusesHugeRasters(t *testing.T) {
+	d := testDoc(t)
+	for _, wh := range [][2]int{{0, 10}, {100000, 100000}, {1 << 16, 1 << 16}} {
+		if _, err := NewBitmap(d, wh[0], wh[1], 1); err == nil {
+			t.Errorf("%v accepted", wh)
+		}
+	}
+}
+
+// A chart far taller than a page is drawn at a lower resolution, within the
+// raster limit (the review's 3,000-category horizontal bar chart).
+func TestTallChartPNGStaysWithinTheLimit(t *testing.T) {
+	d := testDoc(t)
+	var cats, vals []string
+	for i := 0; i < 3000; i++ {
+		cats = append(cats, fmt.Sprintf("%q", fmt.Sprint("区分", i)))
+		vals = append(vals, fmt.Sprint(i%13))
+	}
+	src := `{"type":"bar","orientation":"horizontal","x":{"categories":[` + strings.Join(cats, ",") + `]},"series":[{"values":[` + strings.Join(vals, ",") + `]}]}`
+	spec, _, err := chart.Parse([]byte(src), chart.Limits{MaxPoints: 10000, MaxSeries: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, px, _, err := ChartPNG(d, StandardTheme(), spec, 481.9, 300)
+	if err != nil || px > MaxBitmapPixels || px <= 0 {
+		t.Fatalf("pixels %d, %v", px, err)
+	}
+}
+
 func TestFamilyName(t *testing.T) {
 	if got := FamilyName("HiraginoSans-W3"); got != "Hiragino Sans" {
 		t.Errorf("family %q", got)
@@ -258,7 +291,10 @@ func TestChartPNG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, w, h, _, err := ChartPNG(d, StandardTheme(), spec, 400, 144)
+	data, w, h, px, _, err := ChartPNG(d, StandardTheme(), spec, 400, 144)
+	if px != 800*int(math.Ceil(h*2)) {
+		t.Errorf("pixels reported %d", px)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

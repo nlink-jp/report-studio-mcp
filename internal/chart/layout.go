@@ -9,6 +9,9 @@ import (
 // follows from the content: a fixed aspect for the plot, plus what the title,
 // labels and legend need.
 func Layout(s *Spec, width float64, m Measurer, st Style) *Figure {
+	// A column narrower than this cannot hold a plot; the typesetters never
+	// ask for less, and the floor keeps the arithmetic below positive.
+	width = math.Max(width, 120)
 	l := &layout{s: s, m: m, st: st, f: &Figure{W: width}}
 	if s.Title != "" {
 		lines := wrap(m, s.Title, st.TitleSize, true, width)
@@ -53,6 +56,15 @@ func (l *layout) valueRange(ax Axis, lo, hi float64, includeZero bool) ([]float6
 	}
 	if ax.Max != nil {
 		hi = *ax.Max
+	}
+	// One fixed end can pass the data's other end (all values null, say).
+	if !(hi > lo) {
+		switch {
+		case ax.Max == nil:
+			hi = lo + math.Max(math.Abs(lo), 1)
+		case ax.Min == nil:
+			lo = hi - math.Max(math.Abs(hi), 1)
+		}
 	}
 	ts, dec := ticks(lo, hi, 5)
 	dlo, dhi := ts[0], ts[len(ts)-1]
@@ -123,8 +135,15 @@ func (l *layout) xy() {
 		ylabels[i] = compact(t, ydec)
 		labW = math.Max(labW, m.Width(ylabels[i], fs, false))
 	}
+	// The y label reads up the axis when it fits the plot's height; a longer
+	// one sits above the plot, wrapped, rather than running off the figure.
+	yVertical := s.Y.Label != "" && m.Width(s.Y.Label, fs, false) <= l.f.W*0.45
+	if s.Y.Label != "" && !yVertical {
+		l.textLines(wrap(m, s.Y.Label, fs, false, l.f.W), 0, Start, fs, st.TextMuted)
+		l.y += fs * 0.3
+	}
 	left := labW + pad
-	if s.Y.Label != "" {
+	if yVertical {
 		left += fs * 1.6
 	}
 	right := pad
@@ -148,7 +167,7 @@ func (l *layout) xy() {
 		l.add(Line{X1: px, Y1: y, X2: px + pw, Y2: y, Width: hairline, Color: st.Grid})
 		l.add(Text{X: px - pad, Y: y + fs*0.35, S: ylabels[i], Size: fs, Anchor: End, Color: st.TextMuted})
 	}
-	if s.Y.Label != "" {
+	if yVertical {
 		l.add(Text{X: fs, Y: top + ph/2, S: s.Y.Label, Size: fs, Anchor: Middle, Color: st.TextMuted, Vertical: true})
 	}
 
@@ -189,8 +208,8 @@ func (l *layout) xy() {
 
 	l.y = bottom + xlabH
 	if s.X.Label != "" {
-		l.add(Text{X: px + pw/2, Y: l.y + fs*1.2, S: s.X.Label, Size: fs, Anchor: Middle, Color: st.TextMuted})
-		l.y += fs * 1.6
+		l.y += fs * 0.4
+		l.textLines(wrap(m, s.X.Label, fs, false, pw), px+pw/2, Middle, fs, st.TextMuted)
 	}
 }
 
@@ -211,6 +230,9 @@ func (l *layout) categoryAxis(px, band, bottom float64) float64 {
 		return fs * 1.9
 	}
 	step := 1
+	if band <= 0 {
+		return 0
+	}
 	if line := fs * 1.2; line > band {
 		step = int(math.Ceil(line / band))
 		l.warnf("x-axis labels: %d categories do not fit; every %d%s label is shown", len(cats), step, ordinal(step))
@@ -388,8 +410,8 @@ func (l *layout) horizontal() {
 	px := labCol + pad*2
 	pw := l.f.W - px - pad*3 // room for the last tick label's half
 	if s.X.Label != "" {
-		l.add(Text{X: 0, Y: l.y + fs, S: s.X.Label, Size: fs, Color: st.TextMuted})
-		l.y += fs * 1.6
+		l.textLines(wrap(m, s.X.Label, fs, false, l.f.W), 0, Start, fs, st.TextMuted)
+		l.y += fs * 0.6
 	}
 	top := l.y
 	ph := band * float64(len(s.X.Categories))
@@ -443,8 +465,8 @@ func (l *layout) horizontal() {
 	l.add(Line{X1: x0, Y1: top, X2: x0, Y2: top + ph, Width: hairline * 1.5, Color: st.Axis})
 	l.y = top + ph + fs*1.9
 	if s.Y.Label != "" {
-		l.add(Text{X: px + pw/2, Y: l.y + fs*1.2, S: s.Y.Label, Size: fs, Anchor: Middle, Color: st.TextMuted})
-		l.y += fs * 1.6
+		l.y += fs * 0.4
+		l.textLines(wrap(m, s.Y.Label, fs, false, pw), px+pw/2, Middle, fs, st.TextMuted)
 	}
 }
 
@@ -458,10 +480,13 @@ func (l *layout) legend() {
 	fs := st.FontSize
 	l.y += fs * 0.5
 	x, row := 0.0, l.y
+	rowH := fs * 1.6
 	for si, se := range s.Series {
-		w := fs + pad + l.m.Width(se.Name, fs, false)
-		if x > 0 && x+w > l.f.W {
-			x, row = 0, row+fs*1.6
+		// A name wider than the figure wraps and takes a row of its own.
+		names := wrap(l.m, se.Name, fs, false, l.f.W-fs-pad)
+		w := fs + pad + l.m.Width(names[0], fs, false)
+		if x > 0 && (x+w > l.f.W || len(names) > 1) {
+			x, row, rowH = 0, row+rowH, fs*1.6
 		}
 		cy := row + fs*0.65
 		if s.Type == "line" {
@@ -469,10 +494,25 @@ func (l *layout) legend() {
 		} else {
 			l.add(Rect{X: x, Y: cy - fs*0.4, W: fs * 0.8, H: fs * 0.8, Fill: l.color(si)})
 		}
-		l.add(Text{X: x + fs + pad, Y: row + fs, S: se.Name, Size: fs, Color: st.Text})
+		for i, n := range names {
+			l.add(Text{X: x + fs + pad, Y: row + fs + float64(i)*fs*1.25, S: n, Size: fs, Color: st.Text})
+		}
+		if len(names) > 1 {
+			rowH = fs*1.25*float64(len(names)) + fs*0.35
+			x = l.f.W // the next entry starts a new row
+			continue
+		}
 		x += w + fs*1.5
 	}
-	l.y = row + fs*1.6
+	l.y = row + rowH
+}
+
+// textLines places wrapped lines of text from l.y down, anchored at x.
+func (l *layout) textLines(ls []string, x float64, a Anchor, size float64, c Color) {
+	for _, s := range ls {
+		l.add(Text{X: x, Y: l.y + size, S: s, Size: size, Anchor: a, Color: c})
+		l.y += size * 1.25
+	}
 }
 
 // wrap breaks s into lines no wider than w, between characters (Japanese has

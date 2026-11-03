@@ -177,6 +177,10 @@ func (a *Assets) resolve(dest string) (string, error) {
 	return path.Join(a.base, p), nil
 }
 
+// Spend charges pixels drawn elsewhere (charts rasterised for the .docx)
+// against the document's pixel budget.
+func (a *Assets) Spend(px int) error { return a.spend(px) }
+
 func (a *Assets) spend(px int) error {
 	if a.pixels+px > a.lim.PixelBudget {
 		return limit("pixel_budget", a.lim.PixelBudget,

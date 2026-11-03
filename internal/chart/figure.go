@@ -152,13 +152,21 @@ const (
 )
 
 // ticks returns about n "nice" values (1, 2, 5 × 10^k steps) covering
-// [lo, hi], and the decimals they need.
+// [lo, hi], and the decimals they need. It always returns at least two values
+// and always ends: a range too narrow for floating point to step through is
+// widened as if every value were equal (validate bounds magnitudes, so the
+// arithmetic stays finite).
 func ticks(lo, hi float64, n int) ([]float64, int) {
-	if hi == lo {
-		if hi == 0 {
-			hi = 1
+	if hi < lo {
+		lo, hi = hi, lo
+	}
+	// Relative to the values, and absolutely: subnormal spans underflow.
+	if hi-lo <= math.Max(math.Abs(lo), math.Abs(hi))*1e-9 || hi-lo < 1e-12 {
+		c := (lo + hi) / 2
+		if math.Abs(c) < 1e-12 {
+			lo, hi = 0, 1
 		} else {
-			lo, hi = lo-math.Abs(lo)*0.5, hi+math.Abs(hi)*0.5
+			lo, hi = c-math.Abs(c)*0.5, c+math.Abs(c)*0.5
 		}
 	}
 	raw := (hi - lo) / float64(n)
@@ -173,12 +181,19 @@ func ticks(lo, hi float64, n int) ([]float64, int) {
 	start := math.Floor(lo/step) * step
 	end := math.Ceil(hi/step) * step
 	var out []float64
-	for v := start; v <= end+step*1e-9; v += step {
+	for i := 0; i <= 4*n; i++ { // a handful of steps covers the range; never more
+		v := start + float64(i)*step
+		if v > end+step*1e-9 {
+			break
+		}
 		out = append(out, math.Round(v/step)*step)
+	}
+	if len(out) < 2 {
+		out = []float64{lo, hi}
 	}
 	dec := 0
 	if step < 1 {
-		dec = int(math.Ceil(-math.Log10(step)))
+		dec = min(int(math.Ceil(-math.Log10(step))), 12)
 	}
 	return out, dec
 }

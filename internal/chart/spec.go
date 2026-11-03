@@ -118,6 +118,15 @@ func jsonErr(src []byte, err error) error {
 	return &Error{Line: 1 + bytes.Count(src[:off], []byte("\n")), Msg: msg}
 }
 
+// Text and magnitude bounds. Labels longer than these are mistakes rather
+// than labels, and values beyond maxMagnitude cannot be stepped through by
+// floating-point ticks (an epoch in nanoseconds belongs in seconds).
+const (
+	maxLabelRunes = 200
+	maxTitleRunes = 300
+	maxMagnitude  = 1e15
+)
+
 // scatterSeriesCap is how many categorical colours stay distinguishable when
 // every pair of series can sit side by side, as points in a scatter do: the
 // palette validates all-pairs for its first three slots only.
@@ -147,6 +156,24 @@ func validate(s *Spec, lim Limits) (int, error) {
 	if len(s.Series) == 0 {
 		return 0, errf(`"series" needs at least one series`)
 	}
+	long := func(what, v string, max int) error {
+		if n := len([]rune(v)); n > max {
+			return errf("%s is %d characters; at most %d fit a chart", what, n, max)
+		}
+		return nil
+	}
+	checks := []error{long("the title", s.Title, maxTitleRunes), long("x.label", s.X.Label, maxLabelRunes), long("y.label", s.Y.Label, maxLabelRunes)}
+	for i, c := range s.X.Categories {
+		checks = append(checks, long(fmt.Sprintf("category %d", i+1), c, maxLabelRunes))
+	}
+	for i, se := range s.Series {
+		checks = append(checks, long(fmt.Sprintf("the name of series %d", i+1), se.Name, maxLabelRunes))
+	}
+	for _, err := range checks {
+		if err != nil {
+			return 0, err
+		}
+	}
 	maxSeries := lim.MaxSeries
 	if s.Type == "scatter" && maxSeries > scatterSeriesCap {
 		maxSeries = scatterSeriesCap
@@ -173,6 +200,11 @@ func validate(s *Spec, lim Limits) (int, error) {
 	}{{"x", s.X}, {"y", s.Y}} {
 		if a.ax.Min != nil && a.ax.Max != nil && !(*a.ax.Min < *a.ax.Max) {
 			return 0, errf("%s.min must be less than %s.max", a.name, a.name)
+		}
+		for _, v := range []*float64{a.ax.Min, a.ax.Max} {
+			if v != nil && math.Abs(*v) > maxMagnitude {
+				return 0, errf("%s.min/max %v is beyond ±%g: scale the data (e.g. thousands, seconds)", a.name, *v, maxMagnitude)
+			}
 		}
 	}
 
@@ -255,6 +287,9 @@ func validate(s *Spec, lim Limits) (int, error) {
 func inRange(axis string, v float64, a Axis) error {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return errf("%s value %v is not a finite number", axis, v)
+	}
+	if math.Abs(v) > maxMagnitude {
+		return errf("%s value %v is beyond ±%g: scale the data (e.g. thousands, seconds)", axis, v, maxMagnitude)
 	}
 	if a.Min != nil && v < *a.Min {
 		return errf("%s value %v is below %s.min %v: it would be drawn off the chart", axis, v, axis, *a.Min)

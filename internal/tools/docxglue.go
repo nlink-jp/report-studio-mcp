@@ -61,9 +61,12 @@ func docxOptions(doc *markdown.Document, th theme.Theme, cover, toc bool, logo *
 				}
 				return docx.Picture{}, nil, &pdf.Error{Line: l, Code: "chart_invalid", Message: err.Error()}
 			}
-			data, w, h, warns, err := pdf.ChartPNG(ctdoc, th, spec, width, 300)
+			data, w, h, px, warns, err := pdf.ChartPNG(ctdoc, th, spec, width, 300)
 			if err != nil {
-				return docx.Picture{}, nil, err
+				return docx.Picture{}, nil, &pdf.Error{Line: line, Code: "chart_invalid", Message: "the chart cannot be drawn for the .docx: " + err.Error()}
+			}
+			if err := as.Spend(px); err != nil {
+				return docx.Picture{}, nil, withLine(err, line)
 			}
 			return docx.Picture{PNG: data, WidthPt: w, HeightPt: h}, warns, nil
 		},

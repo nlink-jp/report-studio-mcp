@@ -347,6 +347,10 @@ rs_bitmap *rs_bitmap_new(int pw, int ph, double scale) {
 	b->canvas.ctx = CGBitmapContextCreate(NULL, pw, ph, 8, (size_t)pw * 4, cs,
 		kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
 	CGColorSpaceRelease(cs);
+	if (!b->canvas.ctx) {
+		free(b);
+		return NULL;
+	}
 	CGContextScaleCTM(b->canvas.ctx, scale, scale);
 	b->canvas.h = ph / scale;
 	b->canvas.pdf = 0;

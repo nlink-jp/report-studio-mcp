@@ -415,11 +415,22 @@ type Bitmap struct {
 	pw, ph int
 }
 
+// MaxBitmapPixels bounds one raster: what an int32 byte count holds, with
+// room to spare (the same 12 Mpx mermaid-render draws within).
+const MaxBitmapPixels = 12 << 20
+
 // NewBitmap makes a pw x ph pixel raster whose drawing coordinates are points
-// scaled by scale (pixels per point).
-func NewBitmap(doc *Doc, pw, ph int, scale float64) *Bitmap {
+// scaled by scale (pixels per point). It refuses a raster over
+// MaxBitmapPixels or one Core Graphics cannot allocate.
+func NewBitmap(doc *Doc, pw, ph int, scale float64) (*Bitmap, error) {
+	if pw <= 0 || ph <= 0 || int64(pw)*int64(ph) > MaxBitmapPixels {
+		return nil, fmt.Errorf("a %dx%d raster is outside 1..%d pixels", pw, ph, MaxBitmapPixels)
+	}
 	b := C.rs_bitmap_new(C.int(pw), C.int(ph), C.double(scale))
-	return &Bitmap{Canvas: Canvas{p: C.rs_bitmap_canvas(b), doc: doc}, b: b, pw: pw, ph: ph}
+	if b == nil {
+		return nil, errors.New("Core Graphics cannot allocate the raster")
+	}
+	return &Bitmap{Canvas: Canvas{p: C.rs_bitmap_canvas(b), doc: doc}, b: b, pw: pw, ph: ph}, nil
 }
 
 // Pixels copies the raster out as premultiplied RGBA, top row first, and

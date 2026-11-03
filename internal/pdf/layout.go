@@ -631,6 +631,7 @@ func (l *layouter) chart(v *markdown.CodeBlock) {
 	scale := 1.0
 	if limit := l.th.BodyH() * 0.9; fig.H > limit {
 		scale = limit / fig.H
+		l.warn("chart_scaled", fmt.Sprintf("the chart is taller than a page and is drawn at %.0f%% of its size", scale*100))
 	}
 	l.ensure(fig.H * scale)
 	l.add(FigOp{Fig: fig, X: l.x, Y: l.y, Scale: scale})

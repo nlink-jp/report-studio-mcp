@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"testing"
+	"time"
 )
 
 // fixed measures ASCII at 0.55 em and everything else at a full em.
@@ -246,7 +248,7 @@ func randomSpec(r *rand.Rand) string {
 			spec["orientation"] = "horizontal"
 		}
 	}
-	words := []string{"社内", "社外", "Tokyo", "大阪支社の第二営業部", "x", "2026-10", "不明な宛先"}
+	words := []string{"社内", "社外", "Tokyo", "大阪支社の第二営業部", "x", "2026-10", "不明な宛先", strings.Repeat("長い名前", 40)}
 	var series []map[string]any
 	if typ == "scatter" {
 		for s := 0; s < ns; s++ {
@@ -280,9 +282,84 @@ func randomSpec(r *rand.Rand) string {
 		}
 	}
 	spec["series"] = series
-	if r.Intn(3) == 0 {
+	switch r.Intn(4) {
+	case 0:
 		spec["y"] = map[string]any{"label": "値"}
+	case 1:
+		spec["y"] = map[string]any{"label": strings.Repeat("とても長いラベル", 20)}
 	}
 	b, _ := json.Marshal(spec)
 	return string(b)
+}
+
+// Specs from the independent review that crashed the server or never
+// finished: every one now either draws inside its figure or is refused, and
+// does so promptly.
+func TestDegenerateRangesFinish(t *testing.T) {
+	accept := []string{
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[null,null]}],"y":{"min":5}}`,
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[null,null]}],"y":{"max":-5}}`,
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[1e15,1e15]}]}`,
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[1e14,100000000000000.02]}]}`,
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[5e-324,1e-323]}]}`,
+		`{"type":"bar","x":{"categories":["a"]},"series":[{"values":[0]}]}`,
+		`{"type":"scatter","series":[{"points":[[3,3]]}]}`,
+		`{"type":"bar","x":{"categories":["a","b","c"]},"series":[{"values":[-1e15,1e15,0]}]}`,
+	}
+	refuse := []string{
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[1e308,-1e308]}]}`,
+		`{"type":"line","x":{"categories":["a","b"]},"series":[{"values":[1e16,1.0000000000000002e16]}]}`,
+		`{"type":"bar","x":{"categories":["a"]},"series":[{"values":[1.7e308]}]}`,
+		`{"type":"line","x":{"categories":["a"]},"y":{"max":1e300},"series":[{"values":[1]}]}`,
+	}
+	run := func(src string, wantErr bool) {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s, _, err := Parse([]byte(src), Limits{MaxPoints: 100, MaxSeries: 8})
+			if wantErr {
+				if err == nil {
+					t.Errorf("accepted: %s", src)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("refused %s: %v", src, err)
+				return
+			}
+			for _, w := range []float64{20, 120, 481.9} {
+				checkFigure(t, src, s, Layout(s, w, fixed{}, DefaultStyle()))
+			}
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("did not finish: %s", src)
+		}
+	}
+	for _, s := range accept {
+		run(s, false)
+	}
+	for _, s := range refuse {
+		run(s, true)
+	}
+}
+
+func TestLongLabelsStayInside(t *testing.T) {
+	long := strings.Repeat("とても長い軸のラベル", 19) // 190 characters
+	for _, src := range []string{
+		`{"type":"bar","title":"` + long + `","x":{"label":"` + long + `","categories":["a","b"]},"y":{"label":"` + long + `"},"series":[{"name":"` + long + `","values":[1,2]},{"name":"短い","values":[2,1]}]}`,
+		`{"type":"bar","orientation":"horizontal","x":{"label":"` + long + `","categories":["` + long + `","b"]},"y":{"label":"` + long + `"},"series":[{"values":[1,2]}]}`,
+		`{"type":"scatter","x":{"label":"` + long + `"},"y":{"label":"` + long + `"},"series":[{"name":"` + long + `","points":[[1,2]]},{"name":"b","points":[[2,1]]}]}`,
+	} {
+		s, _, err := Parse([]byte(src), Limits{MaxPoints: 100, MaxSeries: 8})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkFigure(t, "long labels", s, Layout(s, 481.9, fixed{}, DefaultStyle()))
+	}
+	_, _, err := Parse([]byte(`{"type":"bar","x":{"categories":["`+strings.Repeat("x", 201)+`"]},"series":[{"values":[1]}]}`), Limits{MaxPoints: 10, MaxSeries: 8})
+	if err == nil || !strings.Contains(err.Error(), "at most 200") {
+		t.Errorf("a 201-character category: %v", err)
+	}
 }
