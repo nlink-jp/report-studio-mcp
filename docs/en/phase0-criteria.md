@@ -80,4 +80,23 @@ Pass when: all four are recorded here and referenced from RFP §2 "Specification
 
 ## Results
 
-(written here after measuring)
+### P0-1: pass (2026-11-03, macOS 27.2, Go 1.27.3, Apple Silicon)
+
+Probe: a Go program (about 130 lines) whose cgo C part draws `CTFramesetter` → `CTFrameDraw` into a
+`CGPDFContext` and returns the first character of each `CTLine`, plus ten lines of Swift that extract
+the text with PDFKit's `PDFDocument.string`.
+
+1. Subset embedding: `AAAAAB+HiraginoSans-W6` and `AAAAAC+HiraginoSans-W3` (`CIDFontType0`,
+   `FontFile3`). The PDF is 32,668 bytes. — pass
+2. Lost characters: the heading and the 600-character body, with spaces and line breaks removed, equal
+   PDFKit's extraction. — pass
+3. Kinsoku: of 13 body lines, 0 start with a character forbidden at line start.
+   `CTFrameGetVisibleStringRange` also confirms the whole text fit the frame. — pass
+4. stdout: run with stdout and stderr in separate files, stdout is 0 bytes. — pass
+5. Minimum OS: set to 26.0 (a macOS 26 verification environment exists). `vtool -show-build` reports
+   `minos 26.0`. — pass
+
+Note (build condition found): passing `-mmacosx-version-min=26.0` in `CGO_CFLAGS` and `CGO_LDFLAGS`
+alone left Go's runtime cgo objects built for the build machine's OS (27.2), and the linker warned of
+objects "built for newer macOS". Setting `MACOSX_DEPLOYMENT_TARGET=26.0` in the environment and
+rebuilding everything brought the warnings to 0. The Makefile pins this variable.

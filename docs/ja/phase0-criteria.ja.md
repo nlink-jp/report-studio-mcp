@@ -74,4 +74,21 @@ mermaid-render の実データ（`testdata/real` の 51 個）を、A4 の本文
 
 ## 結果
 
-（測定の後にここへ書く）
+### P0-1: 合格（2026-11-03、macOS 27.2、Go 1.27.3、Apple Silicon）
+
+試作: cgo の C 部分で `CTFramesetter` → `CTFrameDraw` を `CGPDFContext` に描き、各 `CTLine` の先頭文字を
+返す Go のプログラム（約 130 行）と、PDFKit の `PDFDocument.string` で文字を取り出す Swift の 10 行。
+
+1. サブセット埋め込み: `AAAAAB+HiraginoSans-W6`・`AAAAAC+HiraginoSans-W3`（`CIDFontType0`、`FontFile3`）。
+   PDF は 32,668 バイト。— 合格
+2. 文字の欠け: 見出しと本文 600 字を、空白・改行を除いて PDFKit の取り出し結果と照合し、一致。— 合格
+3. 禁則: 本文 13 行のうち、行頭禁則の文字で始まる行は 0。`CTFrameGetVisibleStringRange` で全文が枠に
+   収まったことも確認。— 合格
+4. stdout: stdout と stderr を別ファイルにして実行し、stdout は 0 バイト。— 合格
+5. 対応 OS の下限: 26.0 に決めた（macOS 26 の検証環境があるため）。`vtool -show-build` の `minos 26.0`。
+   — 合格
+
+付記（ビルド条件の発見）: `CGO_CFLAGS`・`CGO_LDFLAGS` に `-mmacosx-version-min=26.0` を渡すだけでは、
+Go の実行時の cgo 部品がビルド機の OS（27.2）向けのままで、リンカが「より新しい macOS 向けの
+オブジェクト」と警告した。環境変数 `MACOSX_DEPLOYMENT_TARGET=26.0` を与えて全体をビルドし直すと
+警告は 0 件になった。Makefile でこの変数を固定する。
