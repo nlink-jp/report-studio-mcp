@@ -1,0 +1,112 @@
+// Package workdir resolves the directory one MCP call writes into — the
+// caller's work directory, not this server's — and says which paths a call
+// may never name.
+//
+// The value is per session and per calling runtime, so the server cannot know
+// it; only the caller can. Of the channels a runtime could use, the per-call
+// argument is the only one all four of our callers have: MCP roots come back
+// empty from Codex and carry only the project directory from Claude Code, and
+// Codex strips the environment before spawning a server, so a `${...}`
+// expansion in a registration entry never arrives. The `_meta` key is the
+// second channel, for the runtimes we write ourselves: they can set it on
+// every tools/call without knowing any tool's schema.
+//
+// There is deliberately no third. A server-chosen default is readable by the
+// caller only by coincidence, and when it is not, the call still succeeds and
+// returns a path to a file the caller cannot open.
+//
+// The judgement itself — which directories may be a work directory, which
+// paths are credential or agent-control locations, compared by file identity
+// and by folded name — is nlink-jp/pathguard's, and there is no copy of it
+// here. This package is the adapter: it takes the request's `_meta` from the
+// context and carries the module's errors onto toolerr.
+//
+// Organization ADR-021 and ADR-022. Ported from chrome-pilot-mcp.
+package workdir
+
+import (
+	"context"
+	"errors"
+
+	"github.com/nlink-jp/pathguard"
+	pgwd "github.com/nlink-jp/pathguard/workdir"
+
+	"github.com/nlink-jp/report-studio-mcp/internal/mcpserver"
+	"github.com/nlink-jp/report-studio-mcp/internal/toolerr"
+)
+
+// MetaKey is the request-level `_meta` key a runtime sets on every tools/call
+// to name the session work directory.
+const MetaKey = pgwd.MetaKey
+
+// requiredHint is this server's sentence for work_dir_required: why the
+// directory has to be one the caller can read back.
+const requiredHint = "Results come back as paths, and a path you cannot open is worth nothing."
+
+// Resolver resolves and validates work directories. Only NewResolverFor
+// builds a working one; the zero Resolver refuses every call.
+type Resolver struct {
+	r pgwd.Resolver
+}
+
+// Resolve returns the validated work directory for one call: the tool's
+// work_dir argument, else the runtime hint in the request's `_meta`, else an
+// error. The returned path is absolute and symlink-resolved.
+func (r Resolver) Resolve(ctx context.Context, arg string) (string, error) {
+	dir, err := r.r.Resolve(arg, mcpserver.RequestMeta(ctx))
+	return dir, toolErr(err)
+}
+
+// Validate applies the closed list of checks and returns the resolved path.
+func (r Resolver) Validate(dir string) (string, error) {
+	resolved, err := r.r.Validate(dir)
+	return resolved, toolErr(err)
+}
+
+// NewResolverFor builds the resolver from places this server names itself,
+// each with its own details.reason and sentence — its own configuration
+// directory. A place without an absolute path refuses every call.
+func NewResolverFor(places ...pathguard.Place) Resolver {
+	return Resolver{r: pgwd.NewResolver(pgwd.Options{
+		Protected:    places,
+		RequiredHint: requiredHint,
+	})}
+}
+
+// LocalPath reports why a file a call names may not be written or read on
+// this machine — pathguard's Local policy plus this resolver's places — as a
+// details.reason and a sentence, or two empty strings. Pass the path as given
+// and resolved (the same value twice when it may not exist yet).
+func (r Resolver) LocalPath(raw, resolved string) (reason, why string) {
+	return r.r.LocalPath(raw, resolved)
+}
+
+// OutboundPath is LocalPath for a file that leaves the machine — an image
+// embedded into a document handed to someone — under pathguard's Outbound
+// policy, which also refuses credential names wherever they sit.
+func (r Resolver) OutboundPath(raw, resolved string) (reason, why string) {
+	return r.r.OutboundPath(raw, resolved)
+}
+
+// CheckBeneath reports why dir — <work_dir>/<workspace_id>, the directory a
+// call actually uses, which may not exist yet — may not be used, as a
+// work_dir_denied toolerr, or nil. The workspace manager calls it before it
+// makes or uses a workspace.
+func (r Resolver) CheckBeneath(dir string) error { return toolErr(r.r.CheckBeneath(dir)) }
+
+// toolErr carries a pathguard refusal onto toolerr with the same code,
+// message and details; any other error passes through.
+func toolErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var e *pgwd.Error
+	if !errors.As(err, &e) {
+		return err
+	}
+	te := toolerr.New(e.Code, e.Message)
+	if e.Details != nil {
+		te = te.WithDetails(e.Details)
+	}
+	return te
+}
