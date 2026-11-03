@@ -4,6 +4,8 @@ go 1.26.2
 
 require github.com/nlink-jp/pathguard v0.3.0
 
+require github.com/nlink-jp/toml v0.1.1
+
 require (
 	github.com/nlink-jp/mermaid-render v0.6.0
 	golang.org/x/image v0.46.0 // indirect
