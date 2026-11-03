@@ -1,0 +1,23 @@
+Test data in this directory
+===========================
+
+commonmark-0.31.2.json
+  The examples of the CommonMark Spec, version 0.31.2 (2024-01-28), by John
+  MacFarlane. Licensed under the Creative Commons Attribution-ShareAlike 4.0
+  International License (CC BY-SA 4.0),
+  https://creativecommons.org/licenses/by-sa/4.0/
+  Source: https://spec.commonmark.org/0.31.2/spec.json
+  Fetched: 2026-11-03. Unmodified.
+
+gfm-0.29-gfm-extensions.json
+  The examples of the extension sections (Tables, Task list items,
+  Strikethrough, Autolinks) of the GitHub Flavored Markdown Spec, version
+  0.29-gfm (2019-04-06), which is based on the CommonMark Spec by John
+  MacFarlane. Licensed under CC BY-SA 4.0,
+  https://creativecommons.org/licenses/by-sa/4.0/
+  Source: https://github.github.com/gfm/
+  Fetched: 2026-11-03. Transcribed from the spec's HTML into the layout of
+  spec.json (fields example, section, markdown, html): the "→" tab marks
+  became tabs, visible-space spans became spaces, HTML entities were decoded.
+  Example 657 (Disallowed Raw HTML) is left out: that extension is not
+  implemented, because nothing here renders HTML for a browser.
