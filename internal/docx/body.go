@@ -369,6 +369,9 @@ func (w *writer) footnotes() string {
 		`<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>` +
 		`<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>`)
 	for _, n := range w.doc.Footnotes {
+		if !w.noteSeen[n.Index] {
+			continue // no reference in the body: orphanNotes sets it there
+		}
 		b.WriteString(`<w:footnote w:id="` + itoa(n.Index) + `">`)
 		c := ctx{pstyle: "FootnoteText", lead: &lead{note: true}}
 		w.blocks(n.Children, c)
@@ -378,6 +381,31 @@ func (w *writer) footnotes() string {
 	}
 	b.WriteString(`</w:footnotes>`)
 	return b.String()
+}
+
+// orphanNotes sets, at the end of the body, the notes nothing in the body
+// refers to (only another note or an image description does). Word shows a
+// footnote only at its reference, so such a note would vanish (independent
+// review); here it keeps its number, which is what the text that refers to
+// it shows.
+func (w *writer) orphanNotes() {
+	var orphans []*markdown.Footnote
+	for _, n := range w.doc.Footnotes {
+		if !w.noteSeen[n.Index] {
+			orphans = append(orphans, n)
+		}
+	}
+	if len(orphans) == 0 {
+		return
+	}
+	w.inNote = true // references in them stay numbers, as in footnotes
+	defer func() { w.inNote = false }()
+	w.blocks([]markdown.Block{&markdown.ThematicBreak{}}, ctx{})
+	for _, n := range orphans {
+		c := ctx{pstyle: "FootnoteText", lead: &lead{task: itoa(n.Index) + ". "}}
+		w.blocks(n.Children, c)
+		w.flushLead(c)
+	}
 }
 
 // titleBlock is the front matter's title, subtitle and byline at the top of

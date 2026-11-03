@@ -862,3 +862,23 @@ func TestWriteSample(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A note that only another note refers to has no reference in the body, and
+// Word shows a footnote only at its reference: it is set at the end of the
+// body with its number instead of vanishing (independent review).
+func TestNotesReferredOnlyFromNotesAreKept(t *testing.T) {
+	data, _ := write(t, "本文[^a]。\n\n[^a]: 注 a は注 b を参照する[^b]。\n[^b]: 注 b の本文。\n", fakeOptions(t, &calls{}))
+	p := checkPackage(t, data)
+	notes := string(p.parts["word/footnotes.xml"])
+	if !strings.Contains(notes, "注 a は") || strings.Contains(notes, "注 b の本文") {
+		t.Errorf("footnotes.xml: %s", notes)
+	}
+	ps := paragraphs(t, p.parts["word/document.xml"])
+	last := ps[len(ps)-1]
+	if !strings.Contains(last.text, "2. 注 b の本文") || last.style != "FootnoteText" {
+		t.Errorf("last paragraph %q (%s)", last.text, last.style)
+	}
+	if n := strings.Count(string(p.parts["word/document.xml"]), "<w:footnoteReference"); n != 1 {
+		t.Errorf("%d real references, want 1", n)
+	}
+}

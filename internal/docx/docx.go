@@ -240,6 +240,9 @@ func Write(doc *markdown.Document, o Options) (data []byte, warns []markdown.War
 	var notes string
 	if hasNotes {
 		notes = w.footnotes()
+		w.out, w.cur, w.afterTable = &body, &w.docRels, false
+		w.orphanNotes()
+		w.endContainer()
 	}
 
 	w.line = 1
