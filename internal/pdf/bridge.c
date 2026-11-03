@@ -7,7 +7,7 @@
 #include <string.h>
 
 struct rs_doc {
-	int n;
+	int n, cap;
 	CFDictionaryRef *attrs;
 };
 
@@ -23,47 +23,64 @@ static CGColorRef rgb(double r, double g, double b) {
 	return col;
 }
 
+// makeAttrs builds a style's attributes, or returns NULL when its font is not
+// installed: Core Text substitutes a default for an unknown name, so the name
+// it actually loaded is compared.
+static CFDictionaryRef makeAttrs(const rs_style *s) {
+	double size = s->superscript ? s->size * 0.65 : s->size;
+	CFStringRef name = cfstr(s->font);
+	// About 12 degrees of slant for an oblique.
+	CGAffineTransform slant = CGAffineTransformMake(1, 0, 0.21, 1, 0, 0);
+	CTFontRef font = CTFontCreateWithName(name, size, s->oblique ? &slant : NULL);
+	CFStringRef got = CTFontCopyPostScriptName(font);
+	int ok = CFStringCompare(got, name, 0) == kCFCompareEqualTo;
+	CFRelease(got);
+	CFRelease(name);
+	if (!ok) {
+		CFRelease(font);
+		return NULL;
+	}
+	CGColorRef col = rgb(s->r, s->g, s->b);
+	CFMutableDictionaryRef a = CFDictionaryCreateMutable(NULL, 4,
+		&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	CFDictionarySetValue(a, kCTFontAttributeName, font);
+	CFDictionarySetValue(a, kCTForegroundColorAttributeName, col);
+	if (s->superscript) {
+		double off = s->size * 0.35;
+		CFNumberRef n = CFNumberCreate(NULL, kCFNumberDoubleType, &off);
+		CFDictionarySetValue(a, kCTBaselineOffsetAttributeName, n);
+		CFRelease(n);
+	}
+	if (s->underline) {
+		int u = kCTUnderlineStyleSingle;
+		CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &u);
+		CFDictionarySetValue(a, kCTUnderlineStyleAttributeName, n);
+		CFRelease(n);
+	}
+	CFRelease(font);
+	CGColorRelease(col);
+	return a;
+}
+
+int rs_doc_add_style(rs_doc *d, const rs_style *s) {
+	CFDictionaryRef a = makeAttrs(s);
+	if (!a) return -1;
+	if (d->n == d->cap) {
+		d->cap = d->cap ? d->cap * 2 : 16;
+		d->attrs = realloc(d->attrs, (size_t)d->cap * sizeof *d->attrs);
+	}
+	d->attrs[d->n] = a;
+	return d->n++;
+}
+
 rs_doc *rs_doc_new(const rs_style *styles, int nstyles, int *missing) {
 	rs_doc *d = calloc(1, sizeof *d);
-	d->n = nstyles;
-	d->attrs = calloc((size_t)nstyles, sizeof *d->attrs);
 	for (int i = 0; i < nstyles; i++) {
-		const rs_style *s = &styles[i];
-		double size = s->superscript ? s->size * 0.65 : s->size;
-		CFStringRef name = cfstr(s->font);
-		CTFontRef font = CTFontCreateWithName(name, size, NULL);
-		// Core Text substitutes a default for an unknown name: compare.
-		CFStringRef got = CTFontCopyPostScriptName(font);
-		int ok = CFStringCompare(got, name, 0) == kCFCompareEqualTo;
-		CFRelease(got);
-		CFRelease(name);
-		if (!ok) {
-			CFRelease(font);
+		if (rs_doc_add_style(d, &styles[i]) < 0) {
 			if (missing) *missing = i;
-			d->n = i;
 			rs_doc_free(d);
 			return NULL;
 		}
-		CGColorRef col = rgb(s->r, s->g, s->b);
-		CFMutableDictionaryRef a = CFDictionaryCreateMutable(NULL, 4,
-			&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-		CFDictionarySetValue(a, kCTFontAttributeName, font);
-		CFDictionarySetValue(a, kCTForegroundColorAttributeName, col);
-		if (s->superscript) {
-			double off = s->size * 0.35;
-			CFNumberRef n = CFNumberCreate(NULL, kCFNumberDoubleType, &off);
-			CFDictionarySetValue(a, kCTBaselineOffsetAttributeName, n);
-			CFRelease(n);
-		}
-		if (s->underline) {
-			int u = kCTUnderlineStyleSingle;
-			CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &u);
-			CFDictionarySetValue(a, kCTUnderlineStyleAttributeName, n);
-			CFRelease(n);
-		}
-		d->attrs[i] = a;
-		CFRelease(font);
-		CGColorRelease(col);
 	}
 	return d;
 }

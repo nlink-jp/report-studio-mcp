@@ -24,6 +24,7 @@ type Style struct {
 	R, G, B     float64 // 0..1
 	Superscript bool
 	Underline   bool
+	Oblique     bool
 }
 
 // Span is text in one style.
@@ -54,8 +55,7 @@ func NewDoc(styles []Style) (*Doc, error) {
 	for i, s := range styles {
 		name := C.CString(s.Font)
 		frees = append(frees, unsafe.Pointer(name))
-		cs[i] = C.rs_style{font: name, size: C.double(s.Size), r: C.double(s.R), g: C.double(s.G), b: C.double(s.B),
-			superscript: cbool(s.Superscript), underline: cbool(s.Underline)}
+		cs[i] = cstyle(s, name)
 	}
 	var missing C.int = -1
 	var ptr *C.rs_style
@@ -72,6 +72,30 @@ func NewDoc(styles []Style) (*Doc, error) {
 	doc := &Doc{d: d, styles: styles}
 	runtime.SetFinalizer(doc, func(x *Doc) { x.Close() })
 	return doc, nil
+}
+
+func cstyle(s Style, name *C.char) C.rs_style {
+	return C.rs_style{font: name, size: C.double(s.Size), r: C.double(s.R), g: C.double(s.G), b: C.double(s.B),
+		superscript: cbool(s.Superscript), underline: cbool(s.Underline), oblique: cbool(s.Oblique)}
+}
+
+// Add registers one more style and returns its index; registering the same
+// style twice returns the first index.
+func (d *Doc) Add(s Style) (int, error) {
+	for i, have := range d.styles {
+		if have == s {
+			return i, nil
+		}
+	}
+	name := C.CString(s.Font)
+	defer C.free(unsafe.Pointer(name))
+	cs := cstyle(s, name)
+	i := int(C.rs_doc_add_style(d.d, &cs))
+	if i < 0 {
+		return 0, fmt.Errorf("%w: %s", ErrFontMissing, s.Font)
+	}
+	d.styles = append(d.styles, s)
+	return i, nil
 }
 
 // Close releases the styles.
@@ -126,10 +150,12 @@ func (e *encoded) runPtr() *C.rs_run {
 	return &e.runs[0]
 }
 
-// Line is one line the typesetter broke: spans in their styles, its visible
-// width and vertical metrics in points.
+// Line is one line the typesetter broke: spans in their styles, the runes
+// [Start, End) of the input it holds, its visible width and vertical metrics
+// in points.
 type Line struct {
 	Spans                    []Span
+	Start, End               int
 	Width                    float64
 	Ascent, Descent, Leading float64
 }
@@ -150,6 +176,8 @@ func (d *Doc) Typeset(spans []Span, width float64) []Line {
 		l := out[i]
 		lines[i] = Line{
 			Spans:   slice(units, int(l.start), int(l.start+l.len)),
+			Start:   runeAt(units, int(l.start)),
+			End:     runeAt(units, int(l.start+l.len)),
 			Width:   float64(l.width),
 			Ascent:  float64(l.ascent),
 			Descent: float64(l.descent),
@@ -157,6 +185,17 @@ func (d *Doc) Typeset(spans []Span, width float64) []Line {
 		}
 	}
 	return lines
+}
+
+// runeAt converts a UTF-16 offset into a rune index.
+func runeAt(us []unit, off int) int {
+	n := 0
+	for i := 0; i < off && i < len(us); i++ {
+		if us[i].first {
+			n++
+		}
+	}
+	return n
 }
 
 // unit is one UTF-16 code unit's worth of a span: the rune it belongs to is
@@ -219,6 +258,25 @@ func (d *Doc) Offset(spans []Span, i int) float64 {
 	e := encode(spans)
 	defer e.free()
 	return float64(C.rs_offset(d.d, e.text, e.runPtr(), C.int(len(e.runs)), C.long(e.u16[i])))
+}
+
+// OffsetAt returns the x offset, within the line the spans form, of rune
+// index r of their concatenated text.
+func (d *Doc) OffsetAt(spans []Span, r int) float64 {
+	e := encode(spans)
+	defer e.free()
+	u16 := 0
+	n := 0
+	for _, s := range spans {
+		for _, c := range s.Text {
+			if n == r {
+				return float64(C.rs_offset(d.d, e.text, e.runPtr(), C.int(len(e.runs)), C.long(u16)))
+			}
+			u16 += len(utf16.Encode([]rune{c}))
+			n++
+		}
+	}
+	return float64(C.rs_offset(d.d, e.text, e.runPtr(), C.int(len(e.runs)), C.long(u16)))
 }
 
 // Canvas draws on a PDF page or a bitmap. Coordinates are points, origin at

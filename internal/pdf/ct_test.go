@@ -172,3 +172,50 @@ func TestBitmapDrawsWithTheSamePrimitives(t *testing.T) {
 		t.Errorf("outside it: %v", got)
 	}
 }
+
+func TestAddStyleDedupesAndRefusesMissingFonts(t *testing.T) {
+	d := testDoc(t)
+	a, err := d.Add(Style{Font: "HiraginoSans-W3", Size: 9, Oblique: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := d.Add(Style{Font: "HiraginoSans-W3", Size: 9, Oblique: true})
+	if a != b || a != 4 {
+		t.Errorf("indices %d %d, want 4 4", a, b)
+	}
+	if _, err := d.Add(Style{Font: "NoSuchFont-Bold", Size: 9}); !errors.Is(err, ErrFontMissing) {
+		t.Errorf("err = %v", err)
+	}
+	// The style registered after the refusal still gets the next index.
+	if c, err := d.Add(Style{Font: "HiraginoSans-W6", Size: 9}); err != nil || c != 5 {
+		t.Errorf("next index %d, %v", c, err)
+	}
+}
+
+func TestLinesKnowTheirRuneRanges(t *testing.T) {
+	d := testDoc(t)
+	spans := []Span{{"😀" + para, body}}
+	lines := d.Typeset(spans, 150)
+	total := len([]rune("😀" + para))
+	at := 0
+	for i, l := range lines {
+		if l.Start != at {
+			t.Fatalf("line %d starts at %d, want %d", i, l.Start, at)
+		}
+		n := 0
+		for _, s := range l.Spans {
+			n += len([]rune(s.Text))
+		}
+		if l.End-l.Start != n {
+			t.Fatalf("line %d range %d-%d holds %d runes", i, l.Start, l.End, n)
+		}
+		at = l.End
+	}
+	if at != total {
+		t.Errorf("lines cover %d of %d runes", at, total)
+	}
+	one := lines[0].Spans
+	if x := d.OffsetAt(one, 1); x <= 0 || x >= lines[0].Width {
+		t.Errorf("offset of rune 1 = %v", x)
+	}
+}

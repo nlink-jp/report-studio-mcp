@@ -13,6 +13,7 @@ typedef struct {
 	double r, g, b;     // 0..1
 	int superscript;    // 1 raises and shrinks (footnote marks)
 	int underline;      // 1 underlines (links)
+	int oblique;        // 1 slants the glyphs (emphasis in fonts without an italic)
 } rs_style;
 
 // A run of text in one style. start and len are in UTF-16 units.
@@ -38,6 +39,9 @@ typedef struct rs_doc rs_doc;
 // and fills missing (when non-NULL) with the index of a style whose font is
 // not installed.
 rs_doc *rs_doc_new(const rs_style *styles, int nstyles, int *missing);
+// rs_doc_add_style registers one more style and returns its index, or -1 when
+// its font is not installed.
+int rs_doc_add_style(rs_doc *d, const rs_style *s);
 void rs_doc_free(rs_doc *d);
 
 // rs_typeset breaks utf8 text into lines no wider than width. It returns the
