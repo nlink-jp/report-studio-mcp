@@ -41,6 +41,9 @@ internal/workdir         work_dir resolution and refusals (adapter over pathguar
 internal/chart           ```chart JSON → strict validation → figure (shapes + text in points, output-independent);
                          marks and palette from the org data-viz method, scaled for print; text measured via an
                          injected Measurer (Core Text in the PDF side, a fixed advance in tests)
+internal/pdf             cgo bridge to Core Text / Core Graphics (bridge.c), the block layout into per-page
+                         op lists (layout.go, table.go; frames carry quote bars and code backgrounds across
+                         pages), and rendering ops to PDF (render.go). PDFKit reads output back in tests
 internal/fsio            every read and write: os.Root + kernel path (F_GETPATH) judged by pathguard,
                          regular files only, O_EXCL temp + rename for outputs, output byte cap
 internal/tools           tool registration; get_usage
