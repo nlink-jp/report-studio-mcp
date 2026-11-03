@@ -1,7 +1,7 @@
 # report-studio-mcp
 
 エージェントが書いた Markdown のレポート原稿（文章、グラフのデータ、構成図の定義）を受け取り、
-組版した PDF を呼び出し側の作業ディレクトリに出力する MCP サーバです。外部のサービスやブラウザには
+組版した PDF と編集できる Word 文書（.docx）を呼び出し側の作業ディレクトリに出力する MCP サーバです。外部のサービスやブラウザには
 頼りません。組版は macOS 自身の機能（Core Text・Core Graphics）で行い、日本語の禁則処理が効き、
 フォントは使った文字だけが埋め込まれます。
 
@@ -25,6 +25,33 @@ gem-agent や lagent で調べた結果は、Markdown の応答として手元�
   載せて警告します。
 - **画像**: 作業ディレクトリの中の PNG・JPEG ファイル。
 
+## 出力
+
+- **PDF**: ヒラギノ（またはプロファイルのフォント）、ページ番号、ヘッダーの区分。表紙や目次を付けると、
+  題名のページと、各項目から見出しへ飛べる目次が入ります。
+- **Word（.docx）**: 同じ内容を、プロファイルから作った Word のスタイル（見出し・本文・表・引用・コード・
+  キャプション）で書き出します。脚注は Word の脚注、番号付きリスト、目次フィールド、同じ画像とグラフ。
+  受け取った人が Word で体裁を直せます。
+
+## プロファイル
+
+同梱は 3 つです: `standard`（A4、ヒラギノ角ゴ）、`formal`（表紙・目次、本文はヒラギノ明朝、余白を広く）、
+`compact`（余白と文字を小さく）。運用者は `config.toml`（`$XDG_CONFIG_HOME`・`~/.config`・
+`~/Library/Application Support` の `report-studio-mcp/` の下）にプロファイルを足せます。同梱のどれかを
+土台に、用紙・余白・フォント・文字の大きさ・色・グラフの配色・表紙・目次・表紙のロゴを上書きします。
+
+```toml
+[profiles.customer]
+extends = "formal"
+margin_mm = 22
+toc_title = "目次"
+logo = "~/Pictures/logo.png"
+```
+
+原稿はプロファイルを名前で選び（front matter の `profile:` か、引数 `profile`）、表紙と目次を切り替えられます
+（`cover:`、`toc:`）。設定ファイルは [nlink-jp/toml](https://github.com/nlink-jp/toml) で厳格に読むので、
+知らないキーはエラーになります。
+
 エラーにするのは、出力が間違ったものになる場合（グラフの JSON の誤り、画像が無い、上限超過）だけです。
 それ以外は、原稿の行番号つきの警告として返します。詳しい使い方はサーバの `get_usage` ツールにあります。
 
@@ -33,7 +60,7 @@ gem-agent や lagent で調べた結果は、Markdown の応答として手元�
 | ツール | 役割 |
 |---|---|
 | `get_usage` | 使い方の全体（原稿の書き方、グラフの JSON、上限、エラーと警告） |
-| `render` | `{work_dir, workspace_id, source}` → `<work_dir>/<workspace_id>/out/<原稿のパス>.pdf`。ページ数と警告も返す |
+| `render` | `{work_dir, workspace_id, source}` → `<work_dir>/<workspace_id>/out/<原稿のパス>.pdf` と `.docx`（`formats` で片方だけも可）。ページ数と警告も返す |
 
 `work_dir` はすべての呼び出しで必須で、既定値はありません。呼び出し側が読み戻せる絶対パスの
 ディレクトリを渡します（組織 ADR-021）。
@@ -44,7 +71,7 @@ gem-agent や lagent で調べた結果は、Markdown の応答として手元�
   [pathguard](https://github.com/nlink-jp/pathguard) の床に照らします。読むのは通常のファイルだけで、
   出力は新しい一時名で書いてから名前を付け替えます。
 - クリックできるリンクは `http`・`https`・`mailto` だけです。無害化された指標は書かれたまま出します。
-- PDF の文書情報に入れるのは題名と作成者だけです。
+- PDF の文書情報と .docx の文書プロパティに入れるのは題名と作成者だけです。
 
 ## 動作環境
 

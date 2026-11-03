@@ -7,13 +7,14 @@ manuscript into a typeset PDF and an editable Word document (.docx) in the
 caller's work directory. PDF typesetting uses macOS Core Text and Core
 Graphics through cgo; the Markdown parser, TOML reader and .docx writer are
 written here. Dependencies are nlink-jp modules only (pathguard,
-mermaid-render; mermaid-render carries its declared golang.org/x/image and
-x/text exception). Callers: gem-agent and lagent.
+mermaid-render, toml; mermaid-render carries its declared golang.org/x/image
+and x/text exception). Callers: gem-agent and lagent.
 
-**Current stage: phase 1 done (PDF).** `render` writes PDFs with the
-`standard` profile. Phase 0 results are in `docs/ja/phase0-criteria.ja.md`
-(the Word check is carried over to before release). Next is phase 2: .docx,
-profiles from config.toml, `formal` / `compact`, cover and TOC.
+**Current stage: phase 2 done (PDF + .docx, profiles, cover, TOC).** Next is
+phase 3: the pre-release independent review (the parser and the .docx writer
+were written by subagents — read them), the Word check carried over from
+phase 0, then the release steps. Phase 0 results are in
+`docs/ja/phase0-criteria.ja.md`.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 `docs/en/report-studio-mcp-rfp.md`.
@@ -48,6 +49,10 @@ internal/pdf             cgo bridge to Core Text / Core Graphics (bridge.c), the
                          pages), and rendering ops to PDF (render.go). PDFKit reads output back in tests
 internal/fsio            every read and write: os.Root + kernel path (F_GETPATH) judged by pathguard,
                          regular files only, O_EXCL temp + rename for outputs, output byte cap
+internal/theme           what a profile decides (shared by PDF and .docx) and the built-ins standard/formal/compact
+internal/config          config.toml: [profiles.NAME] extending a built-in; decoded strictly with nlink-jp/toml
+internal/docx            pure-Go .docx writer; pictures, charts and diagrams arrive as PNGs through callbacks
+                         (tools/docxglue.go connects them to the PDF side)
 internal/markdown        CommonMark 0.31.2 + GFM extensions + footnotes + alerts + front matter → ast.go's tree;
                          html.go exists for the spec tests only
 internal/assets          images (PNG/JPEG by content, sized before decoding) and mermaid diagrams → pictures,
@@ -95,4 +100,9 @@ When a sibling fixes one of these packages, port the fix here too.
 - The CommonMark spec test runs with extensions off (as cmark-gfm does); the
   six examples that change with them on are pinned in
   `TestCommonMarkSpecWithExtensions`.
+- The PDF layout runs for every render, whatever `formats` says: it checks the
+  manuscript, produces the warnings and resolves the pictures the .docx then
+  reuses (assets caches them, so they are not counted twice).
+- Never gate a commit on `go test … | tail`: the pipe's status is tail's.
+  Capture the status (`go test ./... >log 2>&1; rc=$?`).
 - Module path: `github.com/nlink-jp/report-studio-mcp`.

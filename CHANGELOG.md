@@ -13,6 +13,17 @@ All notable changes to this project are documented here. The format follows
   Graphics (Hiragino, Japanese line breaking, subset-embedded fonts), and
   returns the output paths, page count and warnings with manuscript lines
   (`max_warnings` caps how many are returned in full).
+- Word output (`.docx`, written by default alongside the PDF; `formats` picks
+  one): styles derived from the profile, real footnotes, numbered lists that
+  restart per list, tables with a repeating header, the same pictures and
+  charts, a cover without header or footer, a table of contents field linked
+  to its headings, page numbers and the classification header.
+- Profiles: built-in `standard`, `formal` (cover, table of contents, Mincho
+  body) and `compact`; operator profiles in `config.toml` extending a
+  built-in (page, margins, fonts, sizes, colours, chart palette, cover, table
+  of contents and its title, cover logo), read strictly with nlink-jp/toml per
+  call; front matter `profile`, `cover` and `toc`.
+- PDF cover page and table of contents whose entries link to their headings.
 - Manuscripts: CommonMark 0.31.2 (all 652 spec examples), GitHub's tables,
   strikethrough, task lists and autolinks (GFM 0.29-gfm), footnotes, alerts,
   and an optional front matter (title, subtitle, author, date, classification,
@@ -23,8 +34,6 @@ All notable changes to this project are documented here. The format follows
 - ` ```mermaid ` blocks drawn with nlink-jp/mermaid-render v0.6.0; a diagram
   that cannot be drawn is shown as its source with a warning.
 - PNG and JPEG images from files under the work directory.
-- The `standard` profile: A4, 20 mm margins, page numbers, the classification
-  in the header.
 - Limits from phase 0's measurements (manuscript, pages, tables, chart points,
   images, a shared pixel budget for images and diagrams, output bytes).
 - `get_usage`: the full reference, including the error and warning table.

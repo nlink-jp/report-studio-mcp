@@ -1,8 +1,8 @@
 # report-studio-mcp
 
 An MCP server that turns a Markdown report manuscript written by an agent —
-prose, chart data, diagram definitions — into a typeset PDF, written into the
-caller's work directory. It relies on no external service and no browser:
+prose, chart data, diagram definitions — into a typeset PDF and an editable
+Word document (.docx), written into the caller's work directory. It relies on no external service and no browser:
 typesetting is done by macOS itself (Core Text and Core Graphics), with
 Japanese line-breaking rules and fonts embedded as subsets.
 
@@ -28,6 +28,39 @@ produces a document ready to hand over.
   A diagram that cannot be drawn is shown as its source, with a warning.
 - **Images**: PNG or JPEG files under the work directory.
 
+## Output
+
+- **PDF**: Hiragino (or the profile's fonts), page numbers, the
+  classification in the header, and — with a cover or table of contents — a
+  title page and a contents list whose entries link to their headings.
+- **Word (.docx)**: the same content with Word styles derived from the
+  profile (headings, body, tables, quotes, code, captions), real footnotes,
+  numbered lists, a table of contents field, and the same pictures and charts.
+  The recipient can restyle it in Word.
+
+## Profiles
+
+Three built-in profiles: `standard` (A4, Hiragino Sans), `formal` (cover,
+table of contents, Hiragino Mincho body, wider margins) and `compact` (narrow
+margins, smaller type). The operator can add profiles in `config.toml`
+(`$XDG_CONFIG_HOME`, `~/.config` or `~/Library/Application Support`, under
+`report-studio-mcp/`), each extending a built-in and overriding page, margins,
+fonts, sizes, colours, chart palette, cover, table of contents and a cover
+logo:
+
+```toml
+[profiles.customer]
+extends = "formal"
+margin_mm = 22
+toc_title = "目次"
+logo = "~/Pictures/logo.png"
+```
+
+The manuscript picks a profile by name (`profile:` in its front matter, or
+the `profile` argument) and can turn the cover and contents on or off
+(`cover:`, `toc:`). The file is decoded strictly with
+[nlink-jp/toml](https://github.com/nlink-jp/toml): an unknown key is an error.
+
 Errors are reserved for output that would be wrong (invalid chart JSON, a
 missing image, a limit exceeded); everything else is a warning carrying its
 manuscript line. The full reference is the server's `get_usage` tool.
@@ -37,7 +70,7 @@ manuscript line. The full reference is the server's `get_usage` tool.
 | Tool | Role |
 |---|---|
 | `get_usage` | The full reference: manuscript format, chart JSON, limits, errors and warnings |
-| `render` | `{work_dir, workspace_id, source}` → `<work_dir>/<workspace_id>/out/<source>.pdf`, with the page count and warnings |
+| `render` | `{work_dir, workspace_id, source}` → `<work_dir>/<workspace_id>/out/<source>.pdf` and `.docx` (`formats` picks one), with the page count and warnings |
 
 `work_dir` is required on every call and has no default: an absolute
 directory the caller can read back (organization ADR-021).
@@ -50,7 +83,8 @@ directory the caller can read back (organization ADR-021).
   files are read; outputs are placed under a fresh name and renamed.
 - Only `http`, `https` and `mailto` links become clickable. Defanged
   indicators stay as written.
-- The PDF's document information holds the title and author only.
+- The PDF's document information and the .docx's core properties hold the
+  title and author only.
 
 ## Requirements
 
