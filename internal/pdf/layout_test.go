@@ -35,7 +35,7 @@ func opts() Options {
 		Chart: chart.Limits{MaxPoints: 10000, MaxSeries: 8}, MaxChartPoints: 50000}
 }
 
-func txt(s string) []md.Inline { return []md.Inline{&md.Text{Value: s}} }
+func txt(s string) []md.Inline      { return []md.Inline{&md.Text{Value: s}} }
 func mdPara(s string) *md.Paragraph { return &md.Paragraph{Children: txt(s), Line: 1} }
 
 var longJa = strings.Repeat("調査の結果、社内から社外への通信のうち一部が既知の不審な宛先に向かっていたことが分かった。", 5)
