@@ -329,3 +329,7 @@ Reason: image-forge・video-studio-mcp・voice-studio-mcp・data-toolbox-mcp と
     `nlink-jp/toml`（v0.1.1、標準ライブラリのみ、toml-test の 1.1.0 を全件通過、既定で未知のキーをエラー）を
     リリースした（利用者の連絡）。chrome-pilot-mcp の部分集合の読み取りを移植する予定をやめ、これを使う。
     組織内の部品なので、コミュニティ製を採らない方針（組織 ADR-024）とも合う。
+12. **第 2 段階の出力の確認（2026-11-03）。** `formal` プロファイルの見本（表紙・目次・注記・表・グループ棒
+    グラフ・mermaid の図・画像・入れ子のリスト・チェックリスト・コード・脚注・区分）を本物のバイナリで出力し、
+    .docx を Pages（Pages Creator Studio 15.4）と LibreOffice 26.8.2.2 で開いて、利用者が問題なく表示される
+    ことを確認した。PDF 版は画像にして確認した。Mac 版 Word での確認はリリース前に残る。

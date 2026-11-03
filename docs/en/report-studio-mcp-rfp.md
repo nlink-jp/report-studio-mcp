@@ -361,3 +361,8 @@ No external platform is depended on. Product-side constraints:
     errors by default; the operator told us). The plan to port chrome-pilot-mcp's subset reader was dropped
     in favour of it. It is the organisation's own, so the rule against community-made components (org
     ADR-024) holds.
+12. **Phase 2 output check (2026-11-03).** A `formal` sample (cover, contents, alert, table, grouped bar
+    chart, mermaid diagram, image, nested lists, task list, code, footnote, classification) was rendered with
+    the real binary; the operator opened the .docx in Pages (Pages Creator Studio 15.4) and LibreOffice
+    26.8.2.2 and confirmed it displays correctly. The PDF was checked as images. The Word for Mac check
+    remains before release.
