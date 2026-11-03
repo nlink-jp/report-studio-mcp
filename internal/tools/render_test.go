@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -105,7 +106,7 @@ func TestRenderWritesAReadablePDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Outputs) != 1 || res.Outputs[0].Path != "ws/out/report/report.pdf" ||
+	if len(res.Outputs) != 2 || res.Outputs[0].Path != "ws/out/report/report.pdf" || res.Outputs[1].Path != "ws/out/report/report.docx" ||
 		res.Outputs[0].AbsPath != filepath.Join(dir, "ws", "out", "report", "report.pdf") || res.WorkDir != dir {
 		t.Fatalf("result %+v", res)
 	}
@@ -159,7 +160,6 @@ func TestRenderErrors(t *testing.T) {
 		"no source":       {base("source", ""), "missing_argument"},
 		"missing source":  {base("source", "nope.md"), "file_not_found"},
 		"source outside":  {base("source", "../etc/hosts"), "path_not_allowed"},
-		"docx":            {base("formats", []string{"pdf", "docx"}), "unsupported_format"},
 		"unknown format":  {base("formats", []string{"html"}), "invalid_arguments"},
 		"unknown profile": {base("profile", "fancy"), "profile_unknown"},
 		"unknown arg":     {base("colour", "red"), "invalid_arguments"},
@@ -293,4 +293,32 @@ func TestConfigAndLogoErrors(t *testing.T) {
 	if !strings.Contains(usageWithConfig(nil), "standard, formal, compact") {
 		t.Error("get_usage does not list the profiles")
 	}
+}
+
+// The Word document carries the same text, and a single format can be asked for.
+func TestRenderWritesAWordDocument(t *testing.T) {
+	if _, err := exec.LookPath("textutil"); err != nil {
+		t.Skip("textutil not available")
+	}
+	dir := workDir(t)
+	put(t, dir, "report/report.md", []byte(manuscript))
+	put(t, dir, "img/a.png", smallPNG(t))
+	res, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "report/report.md", "formats": []string{"docx"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Outputs) != 1 || res.Outputs[0].Format != "docx" {
+		t.Fatalf("outputs %+v", res.Outputs)
+	}
+	out, err := exec.Command("textutil", "-convert", "txt", "-stdout", res.Outputs[0].AbsPath).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(string(out)), "")
+	for _, want := range []string{"調査報告書", "1.概要", "通信の一部が既知の不審な宛先に向かっていた", "1,204", "宛先の内訳", "hxxp://bad[.]example"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("docx lacks %q:\n%s", want, out)
+		}
+	}
+	// Metadata hygiene is checked on the unpacked parts in internal/docx.
 }

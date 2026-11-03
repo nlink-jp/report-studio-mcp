@@ -17,6 +17,7 @@ import (
 	"github.com/nlink-jp/report-studio-mcp/internal/assets"
 	"github.com/nlink-jp/report-studio-mcp/internal/chart"
 	"github.com/nlink-jp/report-studio-mcp/internal/config"
+	"github.com/nlink-jp/report-studio-mcp/internal/docx"
 	"github.com/nlink-jp/report-studio-mcp/internal/fsio"
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
 	"github.com/nlink-jp/report-studio-mcp/internal/pdf"
@@ -39,7 +40,7 @@ const renderSchema = `{
     "work_dir": {"type": "string", "description": "Absolute path of a directory you can read back. Required; there is no default."},
     "workspace_id": {"type": "string", "description": "Workspace under work_dir the output goes to: <work_dir>/<workspace_id>/out/. Letters, digits, '.', '_' and '-'."},
     "source": {"type": "string", "description": "The manuscript, a Markdown file, as a path relative to work_dir."},
-    "formats": {"type": "array", "items": {"type": "string", "enum": ["pdf", "docx"]}, "description": "Outputs to write. Default [\"pdf\"]."},
+    "formats": {"type": "array", "items": {"type": "string", "enum": ["pdf", "docx"]}, "description": "Outputs to write. Default both: [\"pdf\", \"docx\"]."},
     "profile": {"type": "string", "description": "Output profile name. Default: the manuscript's front matter 'profile', else \"standard\"."},
     "max_warnings": {"type": "integer", "minimum": 0, "description": "How many warnings to return in full (default 50); the rest are counted."}
   },
@@ -183,14 +184,18 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot start typesetting: %v", err)
 	}
 	defer ctdoc.Close()
+	as := assets.New(d, filepath.ToSlash(filepath.Clean(a.Source)), assets.Limits{
+		ImageBytes: maxImageBytes, ImageSide: maxImageSide, Images: maxImages,
+		Diagrams: maxDiagrams, PixelBudget: pixelBudget,
+	}, assets.Layout{BodyPt: th.BodySize, ContentW: th.ContentW(), DPI: 300})
+	chartLimits := chart.Limits{MaxPoints: maxChartPoints, MaxSeries: min(len(th.Chart.Palette), 8)}
+	// The PDF layout runs whatever the formats: it checks the manuscript and
+	// produces the warnings, and the .docx draws on the pictures it resolved.
 	res, err := pdf.Layout(doc, ctdoc, pdf.Options{
-		Theme: th,
-		Assets: assets.New(d, filepath.ToSlash(filepath.Clean(a.Source)), assets.Limits{
-			ImageBytes: maxImageBytes, ImageSide: maxImageSide, Images: maxImages,
-			Diagrams: maxDiagrams, PixelBudget: pixelBudget,
-		}, assets.Layout{BodyPt: th.BodySize, ContentW: th.PageW - th.MarginL - th.MarginR, DPI: 300}),
+		Theme:          th,
+		Assets:         as,
 		MaxPages:       maxPages,
-		Chart:          chart.Limits{MaxPoints: maxChartPoints, MaxSeries: min(len(th.Chart.Palette), 8)},
+		Chart:          chartLimits,
 		MaxChartPoints: maxDocChartPoints,
 		Cover:          cover,
 		TOC:            toc,
@@ -201,11 +206,19 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 	}
 
 	out := renderResult{WorkDir: dir, Pages: len(res.Pages)}
+	warns := append(res.Warnings, extra...)
 	for _, f := range formats {
-		// Only "pdf" reaches here in this version (checkFormats).
-		data, err := pdf.Render(res, ctdoc, th, pdf.Meta{
-			Title: titleOf(doc), Author: doc.Meta["author"], Classification: doc.Meta["classification"],
-		})
+		var data []byte
+		switch f {
+		case "pdf":
+			data, err = pdf.Render(res, ctdoc, th, pdf.Meta{
+				Title: titleOf(doc), Author: doc.Meta["author"], Classification: doc.Meta["classification"],
+			})
+		case "docx":
+			var more []markdown.Warning
+			data, more, err = docx.Write(doc, docxOptions(doc, th, cover, toc, logo, as, ctdoc, chartLimits))
+			warns = mergeWarnings(warns, more)
+		}
 		if err != nil {
 			return nil, stopError(err)
 		}
@@ -216,7 +229,6 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		}
 		out.Outputs = append(out.Outputs, output{Format: f, Path: rel, AbsPath: abs, Bytes: len(data)})
 	}
-	warns := append(res.Warnings, extra...)
 	out.WarningsTotal = len(warns)
 	out.Warnings = []warning{}
 	for i, w := range warns {
@@ -231,17 +243,15 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 
 func checkFormats(fs []string) ([]string, error) {
 	if len(fs) == 0 {
-		return []string{"pdf"}, nil
+		return []string{"pdf", "docx"}, nil
 	}
 	seen := map[string]bool{}
 	var out []string
 	for _, f := range fs {
 		switch f {
-		case "pdf":
-		case "docx":
-			return nil, toolerr.New("unsupported_format", "docx output is not available in this version yet; ask for [\"pdf\"]")
+		case "pdf", "docx":
 		default:
-			return nil, toolerr.Newf(toolerr.CodeInvalidArguments, "unknown format %q: use \"pdf\"", f)
+			return nil, toolerr.Newf(toolerr.CodeInvalidArguments, "unknown format %q: use \"pdf\" or \"docx\"", f)
 		}
 		if !seen[f] {
 			seen[f] = true

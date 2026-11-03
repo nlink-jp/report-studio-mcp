@@ -6,7 +6,8 @@ const usage = `report-studio-mcp — reference
 
 WHAT IT DOES
   Typesets a Markdown manuscript into a PDF with macOS's own typesetting (Hiragino fonts,
-  Japanese line-breaking rules). No browser, no network. Charts and mermaid diagrams are drawn
+  Japanese line-breaking rules) and writes the same content as an editable Word document
+  (.docx) whose styles follow the profile. No browser, no network. Charts and mermaid diagrams are drawn
   by the server from what you write; you never write drawing code.
 
 WORKFLOW
@@ -20,13 +21,15 @@ TOOLS
     work_dir      required. Absolute directory you can read back.
     workspace_id  required. Name of the workspace for the output: letters, digits, . _ -
     source        required. Manuscript path relative to work_dir.
-    formats       optional. ["pdf"] (default). "docx" is not available in this version.
+    formats       optional. ["pdf", "docx"] (default both), or either alone.
     profile       optional. A profile name (default: front matter "profile", else "standard");
                   the list is under THIS MACHINE below.
     max_warnings  optional. Warnings returned in full (default 50); the rest are counted.
   Result: {work_dir, outputs:[{format, path, abs_path, bytes}], pages, warnings:[{line, code,
-  message}], warnings_total, warnings_omitted}. The PDF is <workspace_id>/out/<source without
-  extension>.pdf, so a/report.md and b/report.md do not collide.
+  message}], warnings_total, warnings_omitted}. Outputs are <workspace_id>/out/<source without
+  extension>.pdf and .docx, so a/report.md and b/report.md do not collide. pages counts the
+  PDF; Word paginates the .docx itself. In the .docx, the table of contents lists the
+  headings without page numbers (Word fills them in when the field is updated).
 
 MANUSCRIPT
   Ordinary Markdown: CommonMark 0.31.2 plus GitHub's tables, strikethrough, task lists and
@@ -94,7 +97,6 @@ ERRORS  (code — meaning — what to do)
   message names the file and the problem.
   logo_invalid — the profile's cover logo cannot be used — tell the operator, or render
   with cover: false.
-  unsupported_format — docx is not available yet — ask for pdf.
   font_missing — a profile names a font that is not installed.
 
 WARNINGS  (the PDF is written; each names its manuscript line)

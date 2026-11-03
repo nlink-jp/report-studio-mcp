@@ -14,10 +14,10 @@ import (
 
 // Instructions is the hint initialize hands the client's model before any
 // tool list. It names the work_dir contract (organization ADR-021).
-const Instructions = "report-studio-mcp typesets a Markdown report manuscript into a PDF in your work directory. " +
+const Instructions = "report-studio-mcp typesets a Markdown report manuscript into a PDF and a Word document in your work directory. " +
 	"Every call takes work_dir: the absolute path of a directory you can read back (your session or working directory); " +
 	"it is required and has no default. Write the manuscript as a file under work_dir, then call render with its path; " +
-	"the PDF is written to <work_dir>/<workspace_id>/out/ and returned as a path. Call get_usage first for the full reference."
+	"the outputs are written to <work_dir>/<workspace_id>/out/ and returned as paths. Call get_usage first for the full reference."
 
 // RegisterAll registers every implemented tool on the server.
 func RegisterAll(s *mcpserver.Server, resolver workdir.Resolver) {
@@ -29,7 +29,7 @@ func RegisterAll(s *mcpserver.Server, resolver workdir.Resolver) {
 	r := renderer{resolver: resolver, configPaths: config.Paths()}
 	s.RegisterTool(mcpserver.Tool{
 		Name: "render",
-		Description: "Typesets a Markdown manuscript file under work_dir into a PDF at <work_dir>/<workspace_id>/out/<source path>.pdf. " +
+		Description: "Typesets a Markdown manuscript file under work_dir into a PDF and a Word document at <work_dir>/<workspace_id>/out/<source path>.pdf/.docx. " +
 			"Returns the output paths, the page count and warnings with manuscript line numbers. Errors only when the output would be wrong.",
 		InputSchema: json.RawMessage(renderSchema),
 	}, r.render)
