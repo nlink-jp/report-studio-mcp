@@ -272,7 +272,7 @@ func TestWriteNeverOpensAPlantedTemporaryName(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "out"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("../report.md", filepath.Join(dir, "out", ".r.pdf.fixed.tmp")); err != nil {
+	if err := os.Symlink("../report.md", filepath.Join(dir, "out", ".rs-fixed.tmp")); err != nil {
 		t.Fatal(err)
 	}
 	_, err := open(t, dir, &stubJudge{}).WriteFile("out/r.pdf", []byte("PDF"))
@@ -281,5 +281,74 @@ func TestWriteNeverOpensAPlantedTemporaryName(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "report.md")); string(b) != "manuscript" {
 		t.Errorf("manuscript was overwritten: %q", b)
+	}
+}
+
+// A file with a second name is refused: the kernel names it by the link it
+// was opened through, so a hard link to a protected file would pass the floor.
+func TestReadRefusesHardLinks(t *testing.T) {
+	dir := realDir(t)
+	write(t, filepath.Join(dir, "a.md"), "x")
+	if err := os.Link(filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := open(t, dir, &stubJudge{}).ReadFile("b.md", 100)
+	wantCode(t, err, toolerr.CodePathNotAllowed, "hard_link")
+}
+
+// An output directory that is a link to another place inside the work
+// directory is refused: the file would land where the caller did not ask.
+func TestWriteRefusesLinkedDirectoryInside(t *testing.T) {
+	dir := realDir(t)
+	write(t, filepath.Join(dir, "victim", "r.pdf"), "keep")
+	if err := os.MkdirAll(filepath.Join(dir, "ws"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../victim", filepath.Join(dir, "ws", "out")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := open(t, dir, &stubJudge{}).WriteFile("ws/out/r.pdf", []byte("new"))
+	wantCode(t, err, toolerr.CodePathNotAllowed, "linked_output_dir")
+	if b, _ := os.ReadFile(filepath.Join(dir, "victim", "r.pdf")); string(b) != "keep" {
+		t.Errorf("victim replaced: %q", b)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, "victim")); len(entries) != 1 {
+		t.Errorf("temporary file left: %v", entries)
+	}
+}
+
+func TestPathIsTheKernelsName(t *testing.T) {
+	dir := realDir(t)
+	link := filepath.Join(realDir(t), "alias")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	if got := open(t, link, &stubJudge{}).Path(); got != dir {
+		t.Errorf("Path() = %q, want %q", got, dir)
+	}
+}
+
+func TestReadOutside(t *testing.T) {
+	dir := realDir(t)
+	write(t, filepath.Join(dir, "logo.png"), "png")
+	b, err := ReadOutside(filepath.Join(dir, "logo.png"), 10, &stubJudge{})
+	if err != nil || string(b) != "png" {
+		t.Fatalf("%q %v", b, err)
+	}
+	write(t, filepath.Join(dir, "secret", "logo.png"), "png")
+	if err := os.Symlink(filepath.Join(dir, "secret", "logo.png"), filepath.Join(dir, "alias.png")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadOutside(filepath.Join(dir, "alias.png"), 10, &stubJudge{}); err == nil {
+		t.Error("a link into a refused place was read")
+	}
+	if err := os.Link(filepath.Join(dir, "logo.png"), filepath.Join(dir, "second.png")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadOutside(filepath.Join(dir, "logo.png"), 10, &stubJudge{}); err == nil {
+		t.Error("a hard-linked file was read")
+	}
+	if _, err := ReadOutside(dir, 10, &stubJudge{}); err == nil {
+		t.Error("a directory was read")
 	}
 }

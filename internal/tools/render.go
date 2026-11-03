@@ -7,12 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/assets"
@@ -133,6 +131,14 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		return nil, err
 	}
 	defer d.Close()
+	// Validate what was opened, by the kernel's name for it: the name
+	// validated above could have been swapped for a link since.
+	if _, err := r.resolver.Validate(d.Path()); err != nil {
+		return nil, err
+	}
+	if err := r.resolver.CheckBeneath(filepath.Join(d.Path(), a.WorkspaceID)); err != nil {
+		return nil, err
+	}
 	src, err := d.ReadFile(a.Source, maxManuscriptBytes)
 	if err != nil {
 		return nil, err
@@ -268,24 +274,13 @@ func checkFormats(fs []string) ([]string, error) {
 // outside the work directory by design, so it is opened directly, but under
 // the same rules as any image: a regular file, the floor, the size limits.
 func (r renderer) readLogo(path string) (pdf.Picture, error) {
+	// Named by base name only: the operator's path holds their user name.
 	fail := func(format string, a ...any) error {
-		return toolerr.Newf("logo_invalid", "the configured logo %s "+format, append([]any{path}, a...)...)
+		return toolerr.Newf("logo_invalid", "the configured logo %s "+format, append([]any{filepath.Base(path)}, a...)...)
 	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	data, err := fsio.ReadOutside(path, maxImageBytes, r.resolver)
 	if err != nil {
-		return pdf.Picture{}, fail("cannot be opened: %v", err)
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() {
-		return pdf.Picture{}, fail("is not a regular file")
-	}
-	if reason, why := r.resolver.LocalPath(path, path); reason != "" {
-		return pdf.Picture{}, fail("is refused: %s", why)
-	}
-	data, err := io.ReadAll(io.LimitReader(f, maxImageBytes+1))
-	if err != nil || len(data) > maxImageBytes {
-		return pdf.Picture{}, fail("is unreadable or larger than %d bytes", maxImageBytes)
+		return pdf.Picture{}, fail("%v", err)
 	}
 	pic, err := assets.Decode(data, filepath.Base(path), maxImageSide, nil)
 	if err != nil {

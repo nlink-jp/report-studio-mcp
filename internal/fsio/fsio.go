@@ -46,6 +46,7 @@ type Judge interface {
 // Dir is one work directory opened for a call.
 type Dir struct {
 	root    *os.Root
+	path    string // the opened directory as the kernel names it
 	judge   Judge
 	maxOut  int64
 	written int64
@@ -58,8 +59,24 @@ func Open(dir string, judge Judge, maxOutput int64) (*Dir, error) {
 	if err != nil {
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot open the work directory: %v", err)
 	}
-	return &Dir{root: r, judge: judge, maxOut: maxOutput}, nil
+	f, err := r.Open(".")
+	if err != nil {
+		_ = r.Close()
+		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot open the work directory: %v", err)
+	}
+	kpath, err := descriptorPath(f)
+	_ = f.Close()
+	if err != nil {
+		_ = r.Close()
+		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot name the work directory: %v", err)
+	}
+	return &Dir{root: r, path: kpath, judge: judge, maxOut: maxOutput}, nil
 }
+
+// Path is the directory actually opened, as the kernel names it. The caller
+// validates this, not the name it asked for: a name checked and then opened
+// can be swapped for a link in between (independent review).
+func (d *Dir) Path() string { return d.path }
 
 // Close releases the directory.
 func (d *Dir) Close() error { return d.root.Close() }
@@ -86,6 +103,9 @@ func (d *Dir) ReadFile(rel string, max int64) ([]byte, error) {
 	}
 	if !st.Mode().IsRegular() {
 		return nil, refused(rel, "not_regular_file", "it is not a regular file")
+	}
+	if hardLinked(st) {
+		return nil, refused(rel, "hard_link", "it has more than one name (a hard link), so where it really lives cannot be judged")
 	}
 	if err := d.judgeOpen(f, rel, d.judge.OutboundPath); err != nil {
 		return nil, err
@@ -118,7 +138,9 @@ func (d *Dir) WriteFile(rel string, data []byte) (string, error) {
 	if err := d.root.MkdirAll(dir, 0o755); err != nil {
 		return "", openErr(dir, err)
 	}
-	tmp := filepath.Join(dir, "."+filepath.Base(rel)+"."+nonce()+".tmp")
+	// A short name of its own: one built from the final name could exceed
+	// the file system's limit when the final name is near it.
+	tmp := filepath.Join(dir, ".rs-"+nonce()+".tmp")
 	f, err := d.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return "", openErr(tmp, err)
@@ -135,6 +157,14 @@ func (d *Dir) WriteFile(rel string, data []byte) (string, error) {
 		return "", toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot name %s: %v", rel, err)
 	}
 	// Judge the final name in the directory the kernel actually holds.
+	// The directory written into must be where rel names it under the work
+	// directory: a link in the output path (out/ -> elsewhere) is followed by
+	// os.Root while it stays inside, which would place the file somewhere the
+	// caller did not ask for.
+	if want := filepath.Join(d.path, dir); !strings.EqualFold(filepath.Dir(kpath), want) {
+		_ = f.Close()
+		return "", refused(rel, "linked_output_dir", "a directory on its path is a link to another place")
+	}
 	kpath = filepath.Join(filepath.Dir(kpath), filepath.Base(rel))
 	if reason, why := d.judge.LocalPath(rel, kpath); reason != "" {
 		_ = f.Close()
@@ -215,6 +245,48 @@ var nonce = func() string {
 		panic(fmt.Sprintf("crypto/rand: %v", err))
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// hardLinked reports a regular file with more than one name: F_GETPATH
+// names it by the link it was opened through, so a hard link to a protected
+// file would pass the floor (independent review).
+func hardLinked(st os.FileInfo) bool {
+	s, ok := st.Sys().(*syscall.Stat_t)
+	return ok && s.Nlink > 1
+}
+
+// ReadOutside reads a file the operator's configuration names, outside any
+// work directory, under the same rules as a read inside one: a regular file
+// with one name, judged by its kernel path as content that leaves the
+// machine, read up to max bytes.
+func ReadOutside(path string, max int64, judge Judge) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, fmt.Errorf("cannot be opened: %w", err)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, errors.New("is not a regular file")
+	}
+	if hardLinked(st) {
+		return nil, errors.New("has more than one name (a hard link)")
+	}
+	kpath, err := descriptorPath(f)
+	if err != nil {
+		return nil, err
+	}
+	if reason, why := judge.OutboundPath(path, kpath); reason != "" {
+		return nil, fmt.Errorf("is refused: %s", why)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("is larger than %d bytes", max)
+	}
+	return b, nil
 }
 
 // fGetPath is fcntl's F_GETPATH on Darwin (<sys/fcntl.h>).

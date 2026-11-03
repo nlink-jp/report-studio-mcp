@@ -435,6 +435,14 @@ func (w *PDFWriter) BeginPage() { C.rs_pdf_begin_page(w.p) }
 // EndPage ends the current page.
 func (w *PDFWriter) EndPage() { C.rs_pdf_end_page(w.p) }
 
+// Abort releases a document that will not be finished.
+func (w *PDFWriter) Abort() {
+	if w.p != nil {
+		C.rs_pdf_free(w.p)
+		w.p = nil
+	}
+}
+
 // Finish closes the document and returns its bytes. The writer is spent.
 func (w *PDFWriter) Finish() []byte {
 	var n C.long

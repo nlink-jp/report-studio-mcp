@@ -15,6 +15,12 @@ type Meta struct {
 // in the bottom margin and the classification, if any, in the top one.
 func Render(r *Result, doc *Doc, th Theme, meta Meta) ([]byte, error) {
 	w := NewPDF(doc, th.PageW, th.PageH, meta.Title, meta.Author)
+	done := false
+	defer func() {
+		if !done {
+			w.Abort() // an error part-way leaves the C document to free
+		}
+	}()
 	furniture, err := doc.Add(Style{Font: th.Body, Size: th.NoteSize, R: th.TextMuted[0], G: th.TextMuted[1], B: th.TextMuted[2]})
 	if err != nil {
 		return nil, err
@@ -38,6 +44,7 @@ func Render(r *Result, doc *Doc, th Theme, meta Meta) ([]byte, error) {
 		}
 		w.EndPage()
 	}
+	done = true
 	return w.Finish(), nil
 }
 
