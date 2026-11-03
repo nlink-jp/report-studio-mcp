@@ -21,7 +21,8 @@ TOOLS
     workspace_id  required. Name of the workspace for the output: letters, digits, . _ -
     source        required. Manuscript path relative to work_dir.
     formats       optional. ["pdf"] (default). "docx" is not available in this version.
-    profile       optional. "standard" (default; also taken from front matter "profile").
+    profile       optional. A profile name (default: front matter "profile", else "standard");
+                  the list is under THIS MACHINE below.
     max_warnings  optional. Warnings returned in full (default 50); the rest are counted.
   Result: {work_dir, outputs:[{format, path, abs_path, bytes}], pages, warnings:[{line, code,
   message}], warnings_total, warnings_omitted}. The PDF is <workspace_id>/out/<source without
@@ -32,7 +33,8 @@ MANUSCRIPT
   autolinks; footnotes ([^1] and "[^1]: text"); alerts ("> [!NOTE]", TIP, IMPORTANT, WARNING,
   CAUTION). Optional front matter, first line exactly "---", then "key: value" lines, then
   "---". Keys: title, subtitle, author, date, classification (shown at the top of every page,
-  e.g. 社外秘), profile. Without a title, the first heading is the PDF's title.
+  e.g. 社外秘), profile, cover and toc (true/false: override the profile's cover page and
+  table of contents). Without a title, the first heading is the PDF's title.
   Headings: levels 1-3 (deeper ones look like 3). Images: ![caption](relative/path.png) on a
   line of their own; PNG or JPEG; the path is relative to the manuscript. Links: only http,
   https and mailto become clickable; other schemes are shown as text. Defanged indicators
@@ -56,6 +58,19 @@ MERMAID  (a fenced block whose info string is "mermaid")
   that cannot be drawn (another type, emoji in labels, a construct not supported) is shown as
   its source with a warning — the document is still written.
 
+PROFILES
+  Built in: standard (A4, Hiragino Sans, no cover or contents), formal (cover, table of
+  contents, Hiragino Mincho body, wider margins), compact (narrow margins, smaller type).
+  The operator may add profiles in config.toml ($XDG_CONFIG_HOME, ~/.config or
+  ~/Library/Application Support, under report-studio-mcp/): a [profiles.NAME] table with
+  extends = "standard" | "formal" | "compact" and any of paper ("A4"/"Letter"), margin_mm,
+  margin_top_mm/bottom/left/right, body_font, body_bold_font, heading_font, code_font
+  (PostScript names), body_size, code_size, table_size, table_min_size, note_size,
+  title_size, heading_sizes (three), line_gap, text_color, muted_color, link_color,
+  rule_color, code_background, chart_palette (#rrggbb), cover, toc, toc_title, logo
+  (absolute path of a PNG/JPEG for the cover). You choose a profile by name; you cannot
+  change one.
+
 LIMITS
   manuscript 2 MiB; 500 pages; a table 2,000 rows and 50 columns, 20,000 cells in all; a chart
   10,000 data points, 50,000 in all; 50 images, each at most 4096x4096 and 20 MiB; 50 mermaid
@@ -74,13 +89,18 @@ ERRORS  (code — meaning — what to do)
   chart_invalid — the chart JSON cannot be drawn faithfully; details.line is the manuscript
   line — fix the JSON as the message says.
   limit_exceeded — over a limit (details.limit, details.max) — split or shrink the content.
-  profile_unknown — no such profile — use "standard".
+  profile_unknown — no such profile — use one listed under THIS MACHINE.
+  config_invalid — the operator's config.toml cannot be used — tell the operator; the
+  message names the file and the problem.
+  logo_invalid — the profile's cover logo cannot be used — tell the operator, or render
+  with cover: false.
   unsupported_format — docx is not available yet — ask for pdf.
   font_missing — a profile names a font that is not installed.
 
 WARNINGS  (the PDF is written; each names its manuscript line)
   raw_html — HTML is shown as text. deep_heading — a level 4-6 heading looks like level 3.
-  unknown_front_matter_key / invalid_front_matter_line — the front matter line is ignored.
+  unknown_front_matter_key / invalid_front_matter_line / invalid_front_matter_value — that
+  front matter line is ignored.
   link_scheme — a link that is not http/https/mailto is shown as text.
   inline_image — an image inside a paragraph is shown as its caption; give it its own line.
   mermaid_fallback — the diagram is shown as its source.

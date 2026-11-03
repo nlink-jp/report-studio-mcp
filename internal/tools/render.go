@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/assets"
 	"github.com/nlink-jp/report-studio-mcp/internal/chart"
+	"github.com/nlink-jp/report-studio-mcp/internal/config"
 	"github.com/nlink-jp/report-studio-mcp/internal/fsio"
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
 	"github.com/nlink-jp/report-studio-mcp/internal/pdf"
@@ -72,6 +75,9 @@ var workspaceName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 // renderer holds what render needs beyond its arguments.
 type renderer struct {
 	resolver workdir.Resolver
+	// configPaths is where config.toml is looked for (config.Paths in the
+	// server; a test's own file in tests).
+	configPaths []string
 }
 
 func decodeArgs(raw json.RawMessage, v any) error {
@@ -136,13 +142,40 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		return nil, err
 	}
 
+	_, cfg, err := config.Load(r.configPaths)
+	if err != nil {
+		return nil, toolerr.Newf("config_invalid", "the configuration cannot be used: %v", err)
+	}
 	profile := a.Profile
 	if profile == "" {
 		profile = doc.Meta["profile"]
 	}
-	th, err := themeFor(profile)
+	th, err := cfg.Theme(profile)
 	if err != nil {
-		return nil, err
+		return nil, toolerr.New("profile_unknown", err.Error()).
+			WithDetails(map[string]any{"profile": profile, "available": cfg.Names()})
+	}
+	var extra []markdown.Warning
+	cover, toc := th.Cover, th.TOC
+	for key, dst := range map[string]*bool{"cover": &cover, "toc": &toc} {
+		switch v := doc.Meta[key]; v {
+		case "":
+		case "true", "yes":
+			*dst = true
+		case "false", "no":
+			*dst = false
+		default:
+			extra = append(extra, markdown.Warning{Line: 1, Code: "invalid_front_matter_value",
+				Message: fmt.Sprintf("front matter %s: %q is not true or false; the profile's setting is used", key, v)})
+		}
+	}
+	var logo *pdf.Picture
+	if cover && th.Logo != "" {
+		pic, err := r.readLogo(th.Logo)
+		if err != nil {
+			return nil, err
+		}
+		logo = &pic
 	}
 
 	ctdoc, err := pdf.NewDoc(nil)
@@ -157,8 +190,11 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 			Diagrams: maxDiagrams, PixelBudget: pixelBudget,
 		}, assets.Layout{BodyPt: th.BodySize, ContentW: th.PageW - th.MarginL - th.MarginR, DPI: 300}),
 		MaxPages:       maxPages,
-		Chart:          chart.Limits{MaxPoints: maxChartPoints, MaxSeries: len(th.Chart.Palette)},
+		Chart:          chart.Limits{MaxPoints: maxChartPoints, MaxSeries: min(len(th.Chart.Palette), 8)},
 		MaxChartPoints: maxDocChartPoints,
+		Cover:          cover,
+		TOC:            toc,
+		Logo:           logo,
 	})
 	if err != nil {
 		return nil, stopError(err)
@@ -180,11 +216,12 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		}
 		out.Outputs = append(out.Outputs, output{Format: f, Path: rel, AbsPath: abs, Bytes: len(data)})
 	}
-	out.WarningsTotal = len(res.Warnings)
+	warns := append(res.Warnings, extra...)
+	out.WarningsTotal = len(warns)
 	out.Warnings = []warning{}
-	for i, w := range res.Warnings {
+	for i, w := range warns {
 		if i >= maxWarn {
-			out.WarningsOmitted = len(res.Warnings) - maxWarn
+			out.WarningsOmitted = len(warns) - maxWarn
 			break
 		}
 		out.Warnings = append(out.Warnings, warning{Line: w.Line, Code: w.Code, Message: w.Message})
@@ -214,14 +251,34 @@ func checkFormats(fs []string) ([]string, error) {
 	return out, nil
 }
 
-// themeFor returns the built-in profile of that name.
-func themeFor(name string) (pdf.Theme, error) {
-	switch name {
-	case "", "standard":
-		return pdf.StandardTheme(), nil
+// readLogo reads the cover logo the operator's configuration names. It is
+// outside the work directory by design, so it is opened directly, but under
+// the same rules as any image: a regular file, the floor, the size limits.
+func (r renderer) readLogo(path string) (pdf.Picture, error) {
+	fail := func(format string, a ...any) error {
+		return toolerr.Newf("logo_invalid", "the configured logo %s "+format, append([]any{path}, a...)...)
 	}
-	return pdf.Theme{}, toolerr.Newf("profile_unknown", "unknown profile %q: the built-in profile is \"standard\"", name).
-		WithDetails(map[string]any{"profile": name, "available": []string{"standard"}})
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return pdf.Picture{}, fail("cannot be opened: %v", err)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() {
+		return pdf.Picture{}, fail("is not a regular file")
+	}
+	if reason, why := r.resolver.LocalPath(path, path); reason != "" {
+		return pdf.Picture{}, fail("is refused: %s", why)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxImageBytes+1))
+	if err != nil || len(data) > maxImageBytes {
+		return pdf.Picture{}, fail("is unreadable or larger than %d bytes", maxImageBytes)
+	}
+	pic, err := assets.Decode(data, filepath.Base(path), maxImageSide, nil)
+	if err != nil {
+		return pdf.Picture{}, fail("is not usable: %v", err)
+	}
+	return pic, nil
 }
 
 // outputPath keeps the manuscript's path relative to work_dir under the

@@ -93,6 +93,24 @@ func (a *Assets) Image(dest string, line int) (pdf.Picture, error) {
 		}
 		return pdf.Picture{}, stopErr("image_invalid", err.Error(), nil)
 	}
+	pic, err := Decode(data, dest, a.lim.ImageSide, a.spend)
+	if err != nil {
+		if e, ok := err.(*pdf.Error); ok {
+			if e.Details == nil {
+				e.Details = map[string]any{}
+			}
+			e.Details["path"] = rel
+		}
+		return pdf.Picture{}, err
+	}
+	return pic, nil
+}
+
+// Decode checks and decodes PNG or JPEG bytes named name: the format by
+// content, the dimensions (at most side on each) before decoding, and spend,
+// when non-nil, charged with the pixels before decoding too. The picture is
+// shown at 150 dpi unless fitted smaller.
+func Decode(data []byte, name string, side int, spend func(int) error) (pdf.Picture, error) {
 	var decodeConfig func([]byte) (image.Config, error)
 	var decode func([]byte) (image.Image, error)
 	switch {
@@ -103,27 +121,28 @@ func (a *Assets) Image(dest string, line int) (pdf.Picture, error) {
 		decodeConfig = func(b []byte) (image.Config, error) { return jpeg.DecodeConfig(bytes.NewReader(b)) }
 		decode = func(b []byte) (image.Image, error) { return jpeg.Decode(bytes.NewReader(b)) }
 	default:
-		return pdf.Picture{}, stopErr("image_invalid", fmt.Sprintf("%s is not a PNG or JPEG image", dest), map[string]any{"path": rel})
+		return pdf.Picture{}, stopErr("image_invalid", fmt.Sprintf("%s is not a PNG or JPEG image", name), nil)
 	}
 	cfg, err := decodeConfig(data)
 	if err != nil {
-		return pdf.Picture{}, stopErr("image_invalid", fmt.Sprintf("%s cannot be read as an image: %v", dest, err), map[string]any{"path": rel})
+		return pdf.Picture{}, stopErr("image_invalid", fmt.Sprintf("%s cannot be read as an image: %v", name, err), nil)
 	}
-	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > a.lim.ImageSide || cfg.Height > a.lim.ImageSide {
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > side || cfg.Height > side {
 		return pdf.Picture{}, stopErr(toolerr.CodeLimitExceeded,
-			fmt.Sprintf("%s is %dx%d pixels; the limit is %d on each side", dest, cfg.Width, cfg.Height, a.lim.ImageSide),
-			map[string]any{"limit": "image_side", "max": a.lim.ImageSide, "path": rel})
+			fmt.Sprintf("%s is %dx%d pixels; the limit is %d on each side", name, cfg.Width, cfg.Height, side),
+			map[string]any{"limit": "image_side", "max": side})
 	}
-	if err := a.spend(cfg.Width * cfg.Height); err != nil {
-		return pdf.Picture{}, err
+	if spend != nil {
+		if err := spend(cfg.Width * cfg.Height); err != nil {
+			return pdf.Picture{}, err
+		}
 	}
 	img, err := decode(data)
 	if err != nil {
-		return pdf.Picture{}, stopErr("image_invalid", fmt.Sprintf("%s cannot be decoded: %v", dest, err), map[string]any{"path": rel})
+		return pdf.Picture{}, stopErr("image_invalid", fmt.Sprintf("%s cannot be decoded: %v", name, err), nil)
 	}
 	rgba := image.NewRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
 	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
-	// Shown at 150 dpi by default, then fitted to the column.
 	return pdf.Picture{Pix: rgba.Pix, PW: cfg.Width, PH: cfg.Height, DispW: float64(cfg.Width) * 72 / 150}, nil
 }
 

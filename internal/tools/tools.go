@@ -4,7 +4,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
+	"github.com/nlink-jp/report-studio-mcp/internal/config"
 	"github.com/nlink-jp/report-studio-mcp/internal/mcpserver"
 	"github.com/nlink-jp/report-studio-mcp/internal/workdir"
 )
@@ -22,8 +25,8 @@ func RegisterAll(s *mcpserver.Server, resolver workdir.Resolver) {
 		Name:        "get_usage",
 		Description: "Returns the full reference for this server: the manuscript format, chart JSON, profiles, limits, and the error and warning table with recovery.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
-	}, getUsage)
-	r := renderer{resolver: resolver}
+	}, func(context.Context, json.RawMessage) (any, error) { return usageWithConfig(config.Paths()), nil })
+	r := renderer{resolver: resolver, configPaths: config.Paths()}
 	s.RegisterTool(mcpserver.Tool{
 		Name: "render",
 		Description: "Typesets a Markdown manuscript file under work_dir into a PDF at <work_dir>/<workspace_id>/out/<source path>.pdf. " +
@@ -33,5 +36,25 @@ func RegisterAll(s *mcpserver.Server, resolver workdir.Resolver) {
 }
 
 func getUsage(context.Context, json.RawMessage) (any, error) {
-	return usage, nil
+	return usageWithConfig(nil), nil
+}
+
+// usageWithConfig is the reference followed by what this machine's
+// configuration offers: the file read, or why it cannot be used, and the
+// profiles a render may name.
+func usageWithConfig(paths []string) string {
+	path, cfg, err := config.Load(paths)
+	var b strings.Builder
+	b.WriteString(usage)
+	b.WriteString("\nTHIS MACHINE\n")
+	switch {
+	case err != nil:
+		fmt.Fprintf(&b, "  configuration: cannot be used — %v\n  (render reports config_invalid until it is fixed)\n", err)
+	case path == "":
+		b.WriteString("  configuration: none (built-in profiles only)\n")
+	default:
+		fmt.Fprintf(&b, "  configuration: %s\n", path)
+	}
+	fmt.Fprintf(&b, "  profiles: %s\n", strings.Join(cfg.Names(), ", "))
+	return b.String()
 }

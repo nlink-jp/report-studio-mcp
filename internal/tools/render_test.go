@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -77,10 +78,10 @@ func smallPNG(t *testing.T) []byte {
 	return b.Bytes()
 }
 
-func call(t *testing.T, args map[string]any) (renderResult, error) {
+func call(t *testing.T, args map[string]any, config ...string) (renderResult, error) {
 	t.Helper()
 	raw, _ := json.Marshal(args)
-	r := renderer{resolver: workdir.NewResolverFor()}
+	r := renderer{resolver: workdir.NewResolverFor(), configPaths: config}
 	out, err := r.render(context.Background(), raw)
 	if err != nil {
 		return renderResult{}, err
@@ -219,5 +220,77 @@ func TestTableLimits(t *testing.T) {
 	_, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "wide.md"})
 	if codeOf(err) != "limit_exceeded" {
 		t.Errorf("51 columns: %v", err)
+	}
+}
+
+func pagesOf(t *testing.T, res renderResult) []string {
+	t.Helper()
+	data, err := os.ReadFile(res.Outputs[0].AbsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _, err := pdf.ExtractText(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(text, "\f")
+}
+
+func TestProfilesFromTheConfiguration(t *testing.T) {
+	dir := workDir(t)
+	logo := filepath.Join(workDir(t), "logo.png")
+	if err := os.WriteFile(logo, smallPNG(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(workDir(t), "config.toml")
+	if err := os.WriteFile(cfg, []byte("[profiles.customer]\nextends = \"formal\"\ntoc_title = \"目次\"\nlogo = \""+logo+"\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	put(t, dir, "r.md", []byte("---\ntitle: 顧客向け\nprofile: customer\n---\n\n# 第一章\n\n本文。\n"))
+	res, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "r.md"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := pagesOf(t, res)
+	if len(pages) != 3 || !strings.Contains(pages[0], "顧客向け") || !strings.Contains(pages[1], "目次") || !strings.Contains(pages[2], "本文") {
+		t.Errorf("cover, contents, body expected: %q", pages)
+	}
+	// The front matter turns the cover and contents off again.
+	put(t, dir, "s.md", []byte("---\nprofile: customer\ncover: false\ntoc: no\n---\n\n# 第一章\n\n本文。\n"))
+	res, err = call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "s.md"}, cfg)
+	if err != nil || len(pagesOf(t, res)) != 1 {
+		t.Errorf("front matter override: %v", err)
+	}
+	put(t, dir, "u.md", []byte("---\ncover: maybe\n---\n\nx\n"))
+	res, err = call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "u.md"}, cfg)
+	if err != nil || res.WarningsTotal != 1 || res.Warnings[0].Code != "invalid_front_matter_value" {
+		t.Errorf("bad cover value: %+v %v", res.Warnings, err)
+	}
+	// Built-ins are always there; an unknown name lists what is.
+	_, err = call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "r.md", "profile": "nope"}, cfg)
+	var te *toolerr.Error
+	if !errors.As(err, &te) || te.Code != "profile_unknown" || !strings.Contains(fmt.Sprint(te.Details["available"]), "customer") {
+		t.Errorf("unknown profile: %v", err)
+	}
+}
+
+func TestConfigAndLogoErrors(t *testing.T) {
+	dir := workDir(t)
+	put(t, dir, "r.md", []byte("# x\n"))
+	bad := filepath.Join(workDir(t), "config.toml")
+	_ = os.WriteFile(bad, []byte("[profiles.x]\ncolour = 1\n"), 0o644)
+	if _, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "r.md"}, bad); codeOf(err) != "config_invalid" {
+		t.Errorf("broken config: %v", err)
+	}
+	noLogo := filepath.Join(workDir(t), "config.toml")
+	_ = os.WriteFile(noLogo, []byte("[profiles.x]\nextends = \"formal\"\nlogo = \"/nonexistent/logo.png\"\n"), 0o644)
+	if _, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "r.md", "profile": "x"}, noLogo); codeOf(err) != "logo_invalid" {
+		t.Errorf("missing logo: %v", err)
+	}
+	if !strings.Contains(usageWithConfig([]string{bad}), "cannot be used") {
+		t.Error("get_usage does not report the broken configuration")
+	}
+	if !strings.Contains(usageWithConfig(nil), "standard, formal, compact") {
+		t.Error("get_usage does not list the profiles")
 	}
 }
