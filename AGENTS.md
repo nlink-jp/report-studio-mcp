@@ -6,12 +6,14 @@ MCP server (Go, macOS/Apple Silicon only) that turns a Markdown report
 manuscript into a typeset PDF and an editable Word document (.docx) in the
 caller's work directory. PDF typesetting uses macOS Core Text and Core
 Graphics through cgo; the Markdown parser, TOML reader and .docx writer are
-written here. No third-party dependencies (only nlink-jp/pathguard today).
-Callers: gem-agent and lagent.
+written here. Dependencies are nlink-jp modules only (pathguard,
+mermaid-render; mermaid-render carries its declared golang.org/x/image and
+x/text exception). Callers: gem-agent and lagent.
 
-**Current stage: scaffold.** The MCP skeleton and `get_usage` exist; `render`
-does not. Next is Phase 0 of the RFP (measure on real hardware before
-implementing).
+**Current stage: phase 1 done (PDF).** `render` writes PDFs with the
+`standard` profile. Phase 0 results are in `docs/ja/phase0-criteria.ja.md`
+(the Word check is carried over to before release). Next is phase 2: .docx,
+profiles from config.toml, `formal` / `compact`, cover and TOC.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 `docs/en/report-studio-mcp-rfp.md`.
@@ -46,9 +48,14 @@ internal/pdf             cgo bridge to Core Text / Core Graphics (bridge.c), the
                          pages), and rendering ops to PDF (render.go). PDFKit reads output back in tests
 internal/fsio            every read and write: os.Root + kernel path (F_GETPATH) judged by pathguard,
                          regular files only, O_EXCL temp + rename for outputs, output byte cap
-internal/tools           tool registration; get_usage
+internal/markdown        CommonMark 0.31.2 + GFM extensions + footnotes + alerts + front matter → ast.go's tree;
+                         html.go exists for the spec tests only
+internal/assets          images (PNG/JPEG by content, sized before decoding) and mermaid diagrams → pictures,
+                         one pixel budget
+internal/tools           get_usage (usage.go is the full reference), render, limits.go (phase 0 values)
+e2e/                     builds the binary and drives it over stdio
 scripts/                 codesign / notarize / brew (verbatim from .github/templates)
-docs/{en,ja}/            RFP
+docs/{en,ja}/            RFP, phase 0 criteria and results
 ```
 
 ### Provenance of ported packages
@@ -78,4 +85,14 @@ When a sibling fixes one of these packages, port the fix here too.
   machine's OS — phase 0, P0-1). It takes effect only once a package imports
   "C" and the external linker runs: the cgo-free scaffold still reports
   `minos 13.0`. Check with `vtool -show-build dist/report-studio-mcp`.
+- Core Foundation refuses invalid UTF-8 (CFStringCreateWithCString returns
+  NULL): render replaces it before parsing, and the bridge replaces NUL.
+  Anything new that hands text to the bridge must keep that true.
+- A block's `Line` is its opening line (for a fence, the fence). A chart JSON
+  error with a position reports `Line + ce.Line`; one without, the fence.
+- Typesetter stops travel as `panic(stop{...})` inside `pdf.Layout` and are
+  recovered there; never let one escape the package.
+- The CommonMark spec test runs with extensions off (as cmark-gfm does); the
+  six examples that change with them on are pinned in
+  `TestCommonMarkSpecWithExtensions`.
 - Module path: `github.com/nlink-jp/report-studio-mcp`.
