@@ -71,6 +71,10 @@ const (
 	// A file argument outside work_dir, or on the credential blacklist
 	// (ADR-021 §7); details.reason says which.
 	CodePathNotAllowed  = "path_not_allowed"
+	CodeFileNotFound    = "file_not_found"
 	CodeMissingArgument = "missing_argument"
 	CodeWorkspaceFailed = "workspace_failed"
+	// A manuscript, an image or the output is over one of the limits;
+	// details name the limit and the size.
+	CodeLimitExceeded = "limit_exceeded"
 )

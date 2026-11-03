@@ -38,6 +38,8 @@ internal/transport       stdio transport (newline-delimited JSON)
 internal/mcpserver       MCP routing, tool registration, initialize, request _meta
 internal/toolerr         structured tool errors {code, message, details}
 internal/workdir         work_dir resolution and refusals (adapter over pathguard)
+internal/fsio            every read and write: os.Root + kernel path (F_GETPATH) judged by pathguard,
+                         regular files only, O_EXCL temp + rename for outputs, output byte cap
 internal/tools           tool registration; get_usage
 scripts/                 codesign / notarize / brew (verbatim from .github/templates)
 docs/{en,ja}/            RFP
