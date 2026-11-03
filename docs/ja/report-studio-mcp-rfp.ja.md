@@ -142,8 +142,8 @@ mermaid-render の上限（ノード数など）はそのまま引き継ぐ。
 - macOS の Core Text・Core Graphics（cgo 経由）。OS が保守する部品。
 - 自前のライブラリ: `nlink-jp/mermaid-render`、`nlink-jp/pathguard`。mermaid-render が持ち込む
   `golang.org/x/image`・`golang.org/x/text` は、mermaid-render で申告・承認済みの例外を引き継ぐ。
-- TOML の読み込みは自前。chrome-pilot-mcp の TOML 部分集合の読み取り（文字列の配列あり・未知の構文は
-  行番号つきでエラー）を土台に、入れ子の節名（`[profiles.<名前>]`）を読めるよう広げる。
+- TOML の読み込みは組織のライブラリ `nlink-jp/toml`（標準ライブラリのみ、TOML 1.1.0、既定で未知の
+  キーをエラーにする）。Discussion Log 11 を参照。
 - MCP の実装（JSON-RPC・stdio・ツール登録・構造化エラー・作業ディレクトリの解決）は、依存が
   pathguard だけの chrome-pilot-mcp から移植する。どのパッケージをどこから持ってきたかは AGENTS.md に
   記録する。
@@ -325,3 +325,7 @@ Reason: image-forge・video-studio-mcp・voice-studio-mcp・data-toolbox-mcp と
     - 図の中の文字は当面ヒラギノに固定する。
     - 呼び出し側は gem-agent・lagent に絞る。Claude Desktop は作業ディレクトリと原稿を書く経路を
       実測していないので、測ってから加える。
+11. **TOML の読み込み（第 2 段階、2026-11-03）。** 第 2 段階の着手時に、組織が TOML のデコード用ライブラリ
+    `nlink-jp/toml`（v0.1.1、標準ライブラリのみ、toml-test の 1.1.0 を全件通過、既定で未知のキーをエラー）を
+    リリースした（利用者の連絡）。chrome-pilot-mcp の部分集合の読み取りを移植する予定をやめ、これを使う。
+    組織内の部品なので、コミュニティ製を採らない方針（組織 ADR-024）とも合う。

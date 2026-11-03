@@ -156,9 +156,8 @@ configuration file.
 - In-house libraries: `nlink-jp/mermaid-render`, `nlink-jp/pathguard`. The `golang.org/x/image` and
   `golang.org/x/text` that mermaid-render brings in carry over the exception declared and approved for
   mermaid-render.
-- TOML is parsed in-house, starting from chrome-pilot-mcp's TOML-subset reader (string arrays included,
-  unknown syntax rejected with a line number) and extending it to nested section names
-  (`[profiles.<name>]`).
+- TOML is decoded by the organisation's library `nlink-jp/toml` (standard library only, TOML 1.1.0,
+  unknown keys are errors by default). See Discussion Log item 11.
 - The MCP implementation (JSON-RPC, stdio, tool registration, structured errors, work-directory
   resolution) is ported from chrome-pilot-mcp, whose only dependency is pathguard. AGENTS.md records
   which package came from where.
@@ -357,3 +356,8 @@ No external platform is depended on. Product-side constraints:
     - Text inside diagrams stays Hiragino for now.
     - Callers are limited to gem-agent and lagent. Claude Desktop is added after its work directory and
       the way it writes a manuscript have been measured.
+11. **TOML decoding (phase 2, 2026-11-03).** As phase 2 began, the organisation released a TOML decoding
+    library, `nlink-jp/toml` (v0.1.1, standard library only, passes toml-test's 1.1.0 suite, unknown keys are
+    errors by default; the operator told us). The plan to port chrome-pilot-mcp's subset reader was dropped
+    in favour of it. It is the organisation's own, so the rule against community-made components (org
+    ADR-024) holds.
