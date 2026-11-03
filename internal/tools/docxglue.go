@@ -96,12 +96,12 @@ func docxOptions(doc *markdown.Document, th theme.Theme, cover, toc bool, logo *
 				}
 				return docx.Picture{}, nil, &pdf.Error{Line: l, Code: "chart_invalid", Message: err.Error()}
 			}
-			data, w, h, px, warns, err := pdf.ChartPNG(ctdoc, th, spec, width, 300)
+			// Not charged to the pixel budget: one chart's raster is capped and
+			// freed at once, and charting fifty small charts must not be
+			// refused (independent re-review); time is the deadline's.
+			data, w, h, _, warns, err := pdf.ChartPNG(ctdoc, th, spec, width, 300)
 			if err != nil {
 				return docx.Picture{}, nil, &pdf.Error{Line: line, Code: "chart_invalid", Message: "the chart cannot be drawn for the .docx: " + err.Error()}
-			}
-			if err := as.Spend(px); err != nil {
-				return docx.Picture{}, nil, withLine(err, line)
 			}
 			return docx.Picture{PNG: data, WidthPt: w, HeightPt: h}, warns, nil
 		},
@@ -120,8 +120,8 @@ func docxOptions(doc *markdown.Document, th theme.Theme, cover, toc bool, logo *
 func toDocx(p pdf.Picture, column float64) (docx.Picture, error) {
 	w := math.Min(p.DispW, column)
 	pic := docx.Picture{WidthPt: w, HeightPt: w * float64(p.PH) / float64(p.PW)}
-	if len(p.Orig) > 0 {
-		pic.PNG = p.Orig
+	if clean := assets.CleanPNG(p.Orig); clean != nil {
+		pic.PNG = clean
 		return pic, nil
 	}
 	img := &image.RGBA{Pix: p.Pix, Stride: p.PW * 4, Rect: image.Rect(0, 0, p.PW, p.PH)}

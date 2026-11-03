@@ -211,3 +211,32 @@ func TestRepeatedRequestsAreNotCountedTwice(t *testing.T) {
 		t.Errorf("counted %d images, %d diagrams", a.images, a.charts)
 	}
 }
+
+// A source PNG's text, EXIF and time chunks do not travel into a document.
+func TestCleanPNG(t *testing.T) {
+	src := pngOf(t, 4, 4)
+	chunk := func(typ, body string) []byte {
+		b := []byte{byte(len(body) >> 24), byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}
+		b = append(b, typ...)
+		b = append(b, body...)
+		return append(b, 0, 0, 0, 0) // CRC is not checked by the filter
+	}
+	// Insert tEXt and eXIf after IHDR (8-byte signature + 25-byte IHDR chunk).
+	dirty := append(append(append([]byte{}, src[:33]...), chunk("tEXt", "Author\x00SECRET /Users/someone")...), chunk("eXIf", "GPS")...)
+	dirty = append(dirty, src[33:]...)
+	clean := CleanPNG(dirty)
+	if clean == nil || bytes.Contains(clean, []byte("SECRET")) || bytes.Contains(clean, []byte("eXIf")) {
+		t.Fatalf("not cleaned: %q", clean)
+	}
+	if !bytes.Equal(CleanPNG(src), src) {
+		t.Error("a PNG with only image chunks changed")
+	}
+	if _, err := png.Decode(bytes.NewReader(CleanPNG(src))); err != nil {
+		t.Error(err)
+	}
+	for _, bad := range [][]byte{nil, []byte("GIF89a"), src[:20], append(src[:8:8], 0xff, 0xff, 0xff, 0xff, 'I', 'D', 'A', 'T')} {
+		if CleanPNG(bad) != nil {
+			t.Errorf("malformed input accepted: %q", bad)
+		}
+	}
+}

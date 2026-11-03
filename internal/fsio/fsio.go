@@ -135,6 +135,16 @@ func (d *Dir) WriteFile(rel string, data []byte) (string, error) {
 			WithDetails(map[string]any{"limit": "output_bytes", "max": d.maxOut, "size": d.written + int64(len(data))})
 	}
 	dir := filepath.Dir(rel)
+	// Every existing directory on the way must be a directory, not a link:
+	// os.Root follows a link that stays inside, which would place the file
+	// somewhere the caller did not ask (out/ -> ../victim). Checked before
+	// anything is created, so a refusal leaves nothing behind, and again
+	// after, for a link swapped in meanwhile. Comparing path strings instead
+	// refused names that differ only in Unicode normalisation (independent
+	// re-review).
+	if err := d.plainDirs(rel, dir); err != nil {
+		return "", err
+	}
 	if err := d.root.MkdirAll(dir, 0o755); err != nil {
 		return "", openErr(dir, err)
 	}
@@ -157,13 +167,9 @@ func (d *Dir) WriteFile(rel string, data []byte) (string, error) {
 		return "", toolerr.Newf(toolerr.CodeWorkspaceFailed, "cannot name %s: %v", rel, err)
 	}
 	// Judge the final name in the directory the kernel actually holds.
-	// The directory written into must be where rel names it under the work
-	// directory: a link in the output path (out/ -> elsewhere) is followed by
-	// os.Root while it stays inside, which would place the file somewhere the
-	// caller did not ask for.
-	if want := filepath.Join(d.path, dir); !strings.EqualFold(filepath.Dir(kpath), want) {
+	if err := d.plainDirs(rel, dir); err != nil {
 		_ = f.Close()
-		return "", refused(rel, "linked_output_dir", "a directory on its path is a link to another place")
+		return "", err
 	}
 	kpath = filepath.Join(filepath.Dir(kpath), filepath.Base(rel))
 	if reason, why := d.judge.LocalPath(rel, kpath); reason != "" {
@@ -245,6 +251,29 @@ var nonce = func() string {
 		panic(fmt.Sprintf("crypto/rand: %v", err))
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// plainDirs refuses rel when a directory on dir's path exists as anything
+// but a directory (a symbolic link above all). Missing ones are fine: they
+// are created as directories.
+func (d *Dir) plainDirs(rel, dir string) error {
+	if dir == "." {
+		return nil
+	}
+	parts := strings.Split(dir, string(filepath.Separator))
+	for i := range parts {
+		st, err := d.root.Lstat(filepath.Join(parts[:i+1]...))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return openErr(dir, err)
+		}
+		if !st.IsDir() {
+			return refused(rel, "linked_output_dir", "a directory on its path is a link or not a directory")
+		}
+	}
+	return nil
 }
 
 // hardLinked reports a regular file with more than one name: F_GETPATH

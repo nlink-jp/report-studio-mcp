@@ -331,3 +331,17 @@ func TestDocxReusesTheSourcePNG(t *testing.T) {
 		t.Fatalf("%v %v", p.WidthPt, err)
 	}
 }
+
+// Fifty small charts are not refused for the .docx (charging their rasters
+// to the pixel budget did: independent re-review).
+func TestManyChartsInWord(t *testing.T) {
+	dir := workDir(t)
+	var b strings.Builder
+	for i := 0; i < 60; i++ {
+		fmt.Fprintf(&b, "```chart\n{\"type\":\"bar\",\"x\":{\"categories\":[\"a\",\"b\"]},\"series\":[{\"values\":[%d,2]}]}\n```\n\n", i+1)
+	}
+	put(t, dir, "c.md", []byte(b.String()))
+	if _, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "c.md"}); err != nil {
+		t.Fatal(err)
+	}
+}

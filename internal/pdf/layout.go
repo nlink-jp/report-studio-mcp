@@ -181,8 +181,8 @@ type layouter struct {
 	y      float64
 	x, w   float64
 	frames []*frame
-	mark   *marker
-	hooks  []func() // run at the top of each new page (table headers)
+	marks  []*marker // pending list markers, outermost first: "1. - x" has two
+	hooks  []func()  // run at the top of each new page (table headers)
 	warns  []markdown.Warning
 	line   int
 	points int
@@ -474,26 +474,48 @@ func (l *layouter) decorate(ds []deco, ln Line, x, base float64) []deco {
 	return ds
 }
 
-// drawMarker places a pending list marker beside the line whose baseline is
-// base.
+// drawMarker places the pending list markers beside the line whose baseline
+// is base. A list opening another on its first line ("1. - x") leaves one
+// marker per level pending; each sits at its own level's place (overwriting
+// the outer one lost it: independent re-review).
 func (l *layouter) drawMarker(base float64) {
-	if l.mark == nil {
-		return
+	for _, m := range l.marks {
+		w := 0.0
+		for _, s := range m.spans {
+			w += l.doc.Measure(s.Text, s.Style)
+		}
+		l.add(TextOp{Spans: m.spans, X: m.x - w, Y: base, W: w, Asc: m.size * 0.88, Desc: m.size * 0.12})
 	}
-	m := l.mark
-	l.mark = nil
+	l.marks = nil
+}
+
+// pushMarker adds a pending marker unless it would overlap one already
+// pending: past the nesting floor, levels share a place, and the outer
+// marker keeps it.
+func (l *layouter) pushMarker(m *marker) {
+	w := l.markerWidth(m)
+	for _, o := range l.marks {
+		if math.Abs(o.x-m.x) < math.Max(w, l.markerWidth(o)) {
+			return
+		}
+	}
+	l.marks = append(l.marks, m)
+}
+
+func (l *layouter) markerWidth(m *marker) float64 {
 	w := 0.0
 	for _, s := range m.spans {
 		w += l.doc.Measure(s.Text, s.Style)
 	}
-	l.add(TextOp{Spans: m.spans, X: m.x - w, Y: base, W: w, Asc: m.size * 0.88, Desc: m.size * 0.12})
+	return w
 }
 
-// flushMarker places a pending marker before a block that is not text.
+// flushMarker places pending markers before a block that is not text.
 func (l *layouter) flushMarker() {
-	if l.mark != nil {
-		l.ensure(l.mark.size * 1.2)
-		l.drawMarker(l.y + l.mark.size*0.88)
+	if len(l.marks) > 0 {
+		size := l.marks[0].size
+		l.ensure(size * 1.2)
+		l.drawMarker(l.y + size*0.88)
 	}
 }
 
@@ -645,7 +667,7 @@ func (l *layouter) list(v *markdown.List, ts textStyle) {
 		x, w := l.x, l.w
 		// Past the nesting floor the marker sits left of the column, in the
 		// parent's room, where nothing else is on its line.
-		l.mark = &marker{spans: []Span{{Text: markers[i], Style: ms}}, x: x + indent - ts.size*0.4, size: ts.size}
+		l.pushMarker(&marker{spans: []Span{{Text: markers[i], Style: ms}}, x: x + indent - ts.size*0.4, size: ts.size})
 		l.x, l.w = x+indent, w-indent
 		l.blocks(it.Children, ts, v.Tight)
 		l.flushMarker()
@@ -856,7 +878,7 @@ func (l *layouter) footnotes(notes []*markdown.Footnote) {
 	indent := th.NoteSize * 2.2
 	for _, n := range notes {
 		x, w := l.x, l.w
-		l.mark = &marker{spans: []Span{{Text: strconv.Itoa(n.Index) + ".", Style: ms}}, x: x + indent - th.NoteSize*0.4, size: th.NoteSize}
+		l.pushMarker(&marker{spans: []Span{{Text: strconv.Itoa(n.Index) + ".", Style: ms}}, x: x + indent - th.NoteSize*0.4, size: th.NoteSize})
 		l.x, l.w = x+indent, w-indent
 		l.blocks(n.Children, ts, true)
 		l.flushMarker()

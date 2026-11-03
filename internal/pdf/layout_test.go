@@ -527,3 +527,20 @@ func TestPlainTextKeepsCodeAndHTML(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// A list opening another on its first line keeps both markers.
+func TestNestedListMarkersOnOneLine(t *testing.T) {
+	inner := &md.List{Tight: true, Items: []*md.ListItem{{Children: []md.Block{mdPara("first")}}}}
+	outer := &md.List{Ordered: true, Start: 1, Tight: true, Items: []*md.ListItem{{Children: []md.Block{inner}}}}
+	r, _ := layout(t, &md.Document{Children: []md.Block{outer}}, opts())
+	var got []string
+	for _, op := range r.Pages[0].Ops {
+		if to, ok := op.(TextOp); ok {
+			got = append(got, to.Spans[0].Text)
+		}
+	}
+	if strings.Join(got, "|") != "first|1.|◦" { // the inner list is the second level
+		t.Errorf("text ops %q", got)
+	}
+	checkPages(t, r, StandardTheme())
+}

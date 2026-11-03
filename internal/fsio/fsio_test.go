@@ -228,7 +228,7 @@ func TestWriteRefusesLinkedDirectoryOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := open(t, dir, &stubJudge{}).WriteFile("out/r.pdf", []byte("x"))
-	wantCode(t, err, toolerr.CodePathNotAllowed, "outside_work_dir")
+	wantCode(t, err, toolerr.CodePathNotAllowed, "linked_output_dir")
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
 		t.Errorf("something was written outside: %v", entries)
 	}
@@ -350,5 +350,30 @@ func TestReadOutside(t *testing.T) {
 	}
 	if _, err := ReadOutside(dir, 10, &stubJudge{}); err == nil {
 		t.Error("a directory was read")
+	}
+}
+
+// The check compares directories, not path strings: a directory named in a
+// different Unicode normalisation is the same directory (independent
+// re-review), and a refusal creates nothing behind the link.
+func TestWriteOutputDirChecks(t *testing.T) {
+	dir := realDir(t)
+	d := open(t, dir, &stubJudge{})
+	nfd := "ws/out/\u304b\u3099\u304d\u3099/r.pdf" // がぎ decomposed
+	nfc := "ws/out/がぎ/r.pdf"
+	if _, err := d.WriteFile(nfd, []byte("1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.WriteFile(nfc, []byte("2")); err != nil {
+		t.Errorf("the same directory in NFC was refused: %v", err)
+	}
+	write(t, filepath.Join(dir, "victim", "keep"), "k")
+	if err := os.Symlink("../victim", filepath.Join(dir, "ws", "out2")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := d.WriteFile("ws/out2/sub/deep/r.pdf", []byte("x"))
+	wantCode(t, err, toolerr.CodePathNotAllowed, "linked_output_dir")
+	if _, err := os.Stat(filepath.Join(dir, "victim", "sub")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a directory was created behind the link: %v", err)
 	}
 }

@@ -78,7 +78,7 @@ PROFILES
 LIMITS
   manuscript 2 MiB; 500 pages; a table 2,000 rows and 50 columns, 20,000 cells in all; a chart
   10,000 data points, 50,000 in all; 50 images, each at most 4096x4096 and 20 MiB; 50 mermaid
-  diagrams; 100,000,000 pixels of images, diagrams and .docx charts together; 512 MiB of
+  diagrams; 100,000,000 pixels of images and diagrams together; 512 MiB of
   output; 45 seconds per call.
 
 ERRORS  (code — meaning — what to do)

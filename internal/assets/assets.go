@@ -164,6 +164,42 @@ func Decode(data []byte, name string, side int, spend func(int) error) (pdf.Pict
 	return pic, nil
 }
 
+// CleanPNG returns a source PNG with only the chunks that make up the image
+// (header, palette, transparency, colour and resolution information, data)
+// so that text, EXIF, time stamps and embedded profiles in the source do not
+// travel into a document handed to someone (independent re-review). It
+// returns nil for anything that is not a well-formed PNG; the caller then
+// encodes the pixels instead.
+func CleanPNG(data []byte) []byte {
+	const sig = "\x89PNG\r\n\x1a\n"
+	if !bytes.HasPrefix(data, []byte(sig)) {
+		return nil
+	}
+	keep := map[string]bool{"IHDR": true, "PLTE": true, "tRNS": true, "IDAT": true, "IEND": true,
+		"gAMA": true, "cHRM": true, "sRGB": true, "sBIT": true, "pHYs": true}
+	out := append([]byte(nil), sig...)
+	rest := data[len(sig):]
+	for len(rest) > 0 {
+		if len(rest) < 12 {
+			return nil
+		}
+		n := int(uint32(rest[0])<<24 | uint32(rest[1])<<16 | uint32(rest[2])<<8 | uint32(rest[3]))
+		if n < 0 || n > len(rest)-12 {
+			return nil
+		}
+		chunk := rest[:12+n]
+		typ := string(rest[4:8])
+		if keep[typ] {
+			out = append(out, chunk...)
+		}
+		rest = rest[12+n:]
+		if typ == "IEND" {
+			return out
+		}
+	}
+	return nil
+}
+
 // resolve turns a destination into a path relative to the work directory:
 // relative to the manuscript, as a relative link is, and never a URL.
 func (a *Assets) resolve(dest string) (string, error) {
@@ -180,10 +216,6 @@ func (a *Assets) resolve(dest string) (string, error) {
 	}
 	return path.Join(a.base, p), nil
 }
-
-// Spend charges pixels drawn elsewhere (charts rasterised for the .docx)
-// against the document's pixel budget.
-func (a *Assets) Spend(px int) error { return a.spend(px) }
 
 func (a *Assets) spend(px int) error {
 	if a.pixels+px > a.lim.PixelBudget {
