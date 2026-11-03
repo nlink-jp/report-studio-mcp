@@ -82,8 +82,10 @@ func TestServeListsTools(t *testing.T) {
 	if init.Result.Instructions != tools.Instructions {
 		t.Errorf("initialize does not carry tools.Instructions: %q", init.Result.Instructions)
 	}
-	if !strings.Contains(lines[1], `"name":"get_usage"`) {
-		t.Errorf("tools/list missing get_usage: %s", lines[1])
+	for _, tool := range []string{"get_usage", "render"} {
+		if !strings.Contains(lines[1], `"name":"`+tool+`"`) {
+			t.Errorf("tools/list missing %s: %s", tool, lines[1])
+		}
 	}
 }
 

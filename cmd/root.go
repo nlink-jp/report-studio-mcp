@@ -10,12 +10,16 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"syscall"
+
+	"github.com/nlink-jp/pathguard"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/mcpserver"
 	"github.com/nlink-jp/report-studio-mcp/internal/tools"
 	"github.com/nlink-jp/report-studio-mcp/internal/transport"
+	"github.com/nlink-jp/report-studio-mcp/internal/workdir"
 )
 
 // Version is overridden at build time via -ldflags "-X .../cmd.Version=<vX.Y.Z>".
@@ -93,11 +97,34 @@ func serve(stdin io.Reader, stdout, stderr io.Writer) int {
 	tr := transport.NewStdioTransport(stdin, stdout)
 	srv := mcpserver.New("report-studio-mcp", Version, tr, logger)
 	srv.SetInstructions(tools.Instructions)
-	tools.RegisterAll(srv)
+	tools.RegisterAll(srv, workdir.NewResolverFor(ownPlaces()...))
 
 	if err := srv.Serve(context.Background()); err != nil {
 		logger.Error("serve", "err", err)
 		return 1
 	}
 	return 0
+}
+
+// ownPlaces are this server's own directories, which a work directory may not
+// be and a manuscript may not name: its configuration, wherever it is looked
+// up.
+func ownPlaces() []pathguard.Place {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	dirs := []string{
+		filepath.Join(home, ".config", "report-studio-mcp"),
+		filepath.Join(home, "Library", "Application Support", "report-studio-mcp"),
+	}
+	if x := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(x) {
+		dirs = append(dirs, filepath.Join(x, "report-studio-mcp"))
+	}
+	var out []pathguard.Place
+	for _, d := range dirs {
+		out = append(out, pathguard.Place{Path: d, Kind: pathguard.Protected, Reason: "server_config",
+			Why: "it is report-studio-mcp's own configuration directory"})
+	}
+	return out
 }
