@@ -65,4 +65,9 @@ When a sibling fixes one of these packages, port the fix here too.
   with the Edit tool or python3.
 - The release is darwin/arm64 only; there is no cross-compiled matrix
   (cgo + macOS frameworks).
+- The minimum macOS is 26.0, pinned by `MACOSX_DEPLOYMENT_TARGET` in the
+  Makefile (CGO flags alone leave Go's runtime cgo objects at the build
+  machine's OS — phase 0, P0-1). It takes effect only once a package imports
+  "C" and the external linker runs: the cgo-free scaffold still reports
+  `minos 13.0`. Check with `vtool -show-build dist/report-studio-mcp`.
 - Module path: `github.com/nlink-jp/report-studio-mcp`.

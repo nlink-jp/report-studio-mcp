@@ -14,6 +14,11 @@ NOTARY_PROFILE    ?= nlink-jp-notary
 
 # Typesetting goes through macOS Core Text and Core Graphics via cgo, so this
 # tool is darwin/arm64 only: there is no cross-compiled matrix (see the RFP).
+#
+# The minimum macOS is pinned for every object, Go's runtime cgo objects
+# included: -mmacosx-version-min in CGO flags alone leaves those built for the
+# build machine's OS (phase 0, P0-1). Check with `vtool -show-build`.
+export MACOSX_DEPLOYMENT_TARGET := 26.0
 
 .PHONY: build build-all package verify-release test clean help
 
