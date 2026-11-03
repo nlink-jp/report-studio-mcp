@@ -212,7 +212,8 @@ gem-agent・lagent 以外の MCP クライアントへの対応表明（実測�
 ### Phase 3: Release
 
 - `get_usage` の本文、README（日英）、AGENTS.md、CHANGELOG。`--version` への応答（`verify-release` の要件）。
-- リリース前の独立検証。Word と Pages での人による確認。
+- リリース前の独立検証。Pages と LibreOffice での人による確認（Word は手段が無く実施しない。README の
+  制約事項に明記。Discussion Log 13）。
 - 署名・notarize、`make brew`、tap、util-series への submodule 追加、util-series README のカタログ行、
   util-series CLAUDE.md にビルド事情（cgo、darwin/arm64 のみ）を 1 行、org profile README・nlink-web-site
   のカタログ・リポジトリの About、knowledge への還元、check-org。
@@ -332,4 +333,7 @@ Reason: image-forge・video-studio-mcp・voice-studio-mcp・data-toolbox-mcp と
 12. **第 2 段階の出力の確認（2026-11-03）。** `formal` プロファイルの見本（表紙・目次・注記・表・グループ棒
     グラフ・mermaid の図・画像・入れ子のリスト・チェックリスト・コード・脚注・区分）を本物のバイナリで出力し、
     .docx を Pages（Pages Creator Studio 15.4）と LibreOffice 26.8.2.2 で開いて、利用者が問題なく表示される
-    ことを確認した。PDF 版は画像にして確認した。Mac 版 Word での確認はリリース前に残る。
+    ことを確認した。PDF 版は画像にして確認した。
+13. **Word での確認（2026-11-04）。** Mac 版 Word を用意する手段が無いため、Word での確認は実施しないと
+    利用者が判断した。README（日英）に「制約事項」の節を設け、.docx を Word では確認していないこと、
+    確認した範囲（ECMA-376 に沿った部品ごとの検査、Pages 15.4 と LibreOffice 26.8 での表示）を明記した。

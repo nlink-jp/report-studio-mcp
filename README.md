@@ -87,6 +87,20 @@ directory the caller can read back (organization ADR-021).
   document information holds the title and author, plus what Core Graphics
   always writes: the producer (the macOS version) and the creation date.
 
+## Limitations
+
+- **The .docx has not been checked in Microsoft Word.** It was written to
+  ECMA-376 (5th edition, Transitional), checked part by part (well-formed XML,
+  content types, relationships, footnotes, numbering, bookmarks) and opened
+  without warnings in Pages 15.4 and LibreOffice 26.8, where every element
+  showed. Word for Mac or Windows was not available to the project, so whether
+  Word opens it without a repair prompt, and how Word renders it, are not
+  verified.
+- In the .docx, the table of contents lists the headings without page
+  numbers; Word fills them in when the field is updated.
+- Text runs left to right; right-to-left paragraphs are kept but laid out in a
+  left-to-right line.
+
 ## Requirements
 
 macOS 26 or later on Apple Silicon. No third-party dependencies beyond the

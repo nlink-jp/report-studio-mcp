@@ -10,10 +10,10 @@ written here. Dependencies are nlink-jp modules only (pathguard,
 mermaid-render, toml; mermaid-render carries its declared golang.org/x/image
 and x/text exception). Callers: gem-agent and lagent.
 
-**Current stage: phase 2 done (PDF + .docx, profiles, cover, TOC).** Next is
-phase 3: the pre-release independent review (the parser and the .docx writer
-were written by subagents — read them), the Word check carried over from
-phase 0, then the release steps. Phase 0 results are in
+**Current stage: phase 3 — independent review done and fixed; the release
+steps remain.** The .docx has NOT been checked in Microsoft Word (no Word
+available; operator's decision 2026-11-04) — the README's Limitations say so;
+keep that sentence true until someone checks. Phase 0 results are in
 `docs/ja/phase0-criteria.ja.md`.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and

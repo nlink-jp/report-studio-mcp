@@ -233,7 +233,8 @@ Write and commit the pass criteria first, then measure. A failure sends us back 
 
 - `get_usage` text, README (en/ja), AGENTS.md, CHANGELOG. A `--version` response (required by
   `verify-release`).
-- Independent verification before release. A person checks the output in Word and Pages.
+- Independent verification before release. A person checks the output in Pages and LibreOffice (Word is
+  not available and the check is not performed; stated under Limitations in the README; Discussion Log 13).
 - Signing and notarisation, `make brew`, tap, submodule in util-series, the util-series README catalog
   row, one line in util-series CLAUDE.md on the build (cgo, darwin/arm64 only), the org profile README,
   the nlink-web-site catalog and the repository About, knowledge feedback, check-org.
@@ -364,5 +365,8 @@ No external platform is depended on. Product-side constraints:
 12. **Phase 2 output check (2026-11-03).** A `formal` sample (cover, contents, alert, table, grouped bar
     chart, mermaid diagram, image, nested lists, task list, code, footnote, classification) was rendered with
     the real binary; the operator opened the .docx in Pages (Pages Creator Studio 15.4) and LibreOffice
-    26.8.2.2 and confirmed it displays correctly. The PDF was checked as images. The Word for Mac check
-    remains before release.
+    26.8.2.2 and confirmed it displays correctly. The PDF was checked as images.
+13. **The Word check (2026-11-04).** There is no way to obtain Word for Mac, so the operator decided the Word
+    check is not performed. The README (en/ja) has a "Limitations" section stating that the .docx has not
+    been checked in Word and what was checked instead (part-by-part checks against ECMA-376, display in
+    Pages 15.4 and LibreOffice 26.8).

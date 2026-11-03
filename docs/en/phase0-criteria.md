@@ -133,6 +133,10 @@ Handling (operator's decision, 2026-11-03): the Word check is carried over to th
 (RFP §4 Phase 3, "a person checks the output in Word and Pages"). The phases before it do not depend on
 Word and are not held up.
 
+Later handling (operator's decision, 2026-11-04): there is no way to obtain Word, so the Word check is
+**not performed**. Criterion 1 of P0-2 stays unmeasurable, and the README (en/ja) states under
+"Limitations" that the .docx has not been checked in Word.
+
 ### P0-3: pass (2026-11-03)
 
 Probe: the 51 diagrams in `testdata/real` drawn with mermaid-render (the lib-series working copy,

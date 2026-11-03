@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.1.0] - Unreleased
 
+### Known limitations
+
+- The .docx has not been checked in Microsoft Word; it was checked against
+  ECMA-376 part by part and opened in Pages 15.4 and LibreOffice 26.8 (see the
+  README's Limitations).
+
 ### Added
 
 - `render`: typesets a Markdown manuscript under `work_dir` into a PDF at
