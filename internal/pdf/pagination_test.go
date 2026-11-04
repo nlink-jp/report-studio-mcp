@@ -633,3 +633,29 @@ func TestPlansArePerTextStyle(t *testing.T) {
 		t.Error("two styles share one plan")
 	}
 }
+
+// Numbers with a unit or a currency sign after letters stay whole too (the
+// re-review found them broken silently after identifiers were excluded).
+func TestNumbersWithUnitsStayWhole(t *testing.T) {
+	src := "| 説明 | 容量 | 金額 | 時間 | 倍率 | 値 |\n|---|---:|---:|---:|---:|---:|\n| " + strings.Repeat("長い説明の文章", 20) +
+		" | 1,234,567,890KB | US$1,234,567,890 | 12,345.67ms | +1.5pt | 1,234,567,890 |\n"
+	r, _ := layout(t, parse(t, src), opts())
+	for _, num := range []string{"1,234,567,890KB", "US$1,234,567,890", "12,345.67ms", "+1.5pt"} {
+		if pageOf(r, num) < 0 {
+			t.Errorf("%s is broken", num)
+		}
+	}
+}
+
+// The PDF's side of the .docx's rule: a heading in a list item does not make
+// a page's body, one in a quote does (its bar).
+func TestHeadingsInContainersAndChapterBreaks(t *testing.T) {
+	for src, pages := range map[string]int{
+		"- ## 項目見出し\n\n## 章\n\n後。\n": 1,
+		"> ## 引用見出し\n\n## 章\n\n後。\n": 2,
+	} {
+		if r, _ := layout(t, parse(t, src), withBreak(2)); len(r.Pages) != pages {
+			t.Errorf("%q: %d pages, want %d", src, len(r.Pages), pages)
+		}
+	}
+}

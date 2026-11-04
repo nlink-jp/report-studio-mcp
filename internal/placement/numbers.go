@@ -23,9 +23,12 @@ const (
 )
 
 // NumberTokens finds the numbers in s worth keeping whole (two characters or
-// more), as byte ranges. Digits that are part of an ASCII word holding a
-// letter (a hash, a UUID, CVE-2024-1234, ID1234) are an identifier, not a
-// number: they are left out, so an identifier never widens a column.
+// more), as byte ranges. Digits in an ASCII word where a letter comes before
+// a digit (a hash, a UUID, CVE-2024-1234, ID1234, v1.2.3) are an identifier,
+// not a number: they are left out, so an identifier never widens a column.
+// Letters only after the digits are a unit (100mg, 1,234KB, +1.5pt) and the
+// number stays a number, as does one with a currency sign after letters
+// (US$1,234).
 func NumberTokens(s string) [][]int {
 	var out [][]int
 	for _, m := range numberRE.FindAllStringIndex(s, -1) {
@@ -37,15 +40,21 @@ func NumberTokens(s string) [][]int {
 }
 
 // inIdentifier reports whether the match sits in a run of ASCII word
-// characters and joiners (- . , _ + %) that holds a letter.
+// characters and joiners (- . , _ + %) in which a letter comes before a
+// digit. The run does not reach back past a sign or currency symbol that
+// starts the match.
 func inIdentifier(s string, m []int) bool {
 	start, end := m[0], m[1]
-	for start > 0 {
-		r, n := utf8.DecodeLastRuneInString(s[:start])
-		if !isIDRune(r) {
-			break
+	// A number starting with a currency or other sign (¥ $ ▲ ...) is its own
+	// word: what precedes the sign is not part of it.
+	if r, _ := utf8.DecodeRuneInString(s[start:]); r == '-' || r == '+' || isDigit(r) {
+		for start > 0 {
+			r, n := utf8.DecodeLastRuneInString(s[:start])
+			if !isIDRune(r) {
+				break
+			}
+			start -= n
 		}
-		start -= n
 	}
 	for end < len(s) {
 		r, n := utf8.DecodeRuneInString(s[end:])
@@ -54,13 +63,19 @@ func inIdentifier(s string, m []int) bool {
 		}
 		end += n
 	}
+	letter := false
 	for _, r := range s[start:end] {
-		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+		switch {
+		case r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z':
+			letter = true
+		case isDigit(r) && letter:
 			return true
 		}
 	}
 	return false
 }
+
+func isDigit(r rune) bool { return r >= '0' && r <= '9' || r >= '０' && r <= '９' }
 
 func isIDRune(r rune) bool { return isASCIIWord(r) || strings.ContainsRune("-.,+%", r) }
 

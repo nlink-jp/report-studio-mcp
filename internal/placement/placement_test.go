@@ -102,6 +102,17 @@ func TestNumberTokensAndTheirUnits(t *testing.T) {
 			t.Errorf("%q: tokens %v", id, ms)
 		}
 	}
+	// Units after the digits, and a currency sign after letters, leave a
+	// number a number (the re-review: these broke silently).
+	for _, c := range []struct{ s, tok string }{
+		{"100mg", "100"}, {"1,234,567KB", "1,234,567"}, {"+1.5pt", "+1.5"}, {"12.5x", "12.5"},
+		{"3.5GHz", "3.5"}, {"1,500ms", "1,500"}, {"US$1,234,567", "$1,234,567"}, {"JPY ¥1,234", "¥1,234"},
+	} {
+		ms := NumberTokens(c.s)
+		if len(ms) != 1 || c.s[ms[0][0]:ms[0][1]] != c.tok {
+			t.Errorf("%q: tokens %v, want %q", c.s, ms, c.tok)
+		}
+	}
 	// An IP address is a number: kept whole.
 	if ms := NumberTokens("送信元 192.168.10.25"); len(ms) != 1 {
 		t.Errorf("IP address: %v", ms)
