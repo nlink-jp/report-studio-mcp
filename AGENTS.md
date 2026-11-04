@@ -12,8 +12,10 @@ and x/text exception). Callers: gem-agent and lagent.
 
 **Current stage: released (the version is in `git tag` and the CHANGELOG) —
 darwin/arm64, Homebrew formula in nlink-jp/tap.** Open follow-ups live as
-issues elsewhere (ADR-025): nlink-jp/mcp-tactics#1, nlink-jp/skills-series#1
-(nlink-jp/pathguard#1 is fixed in pathguard v0.3.1, which v0.1.1 takes). The .docx has NOT been checked in Microsoft Word (no Word
+issues elsewhere (ADR-025): nlink-jp/skills-series#1, narrowed by org ADR-027
+to report writing that is not this tool's craft (nlink-jp/mcp-tactics#1 was
+closed: ADR-027 keeps this server out of mcp-tactics; nlink-jp/pathguard#1 is
+fixed in pathguard v0.3.1, which v0.1.1 takes). The .docx has NOT been checked in Microsoft Word (no Word
 available; operator's decision 2026-11-04) — the README's Limitations say so;
 keep that sentence true until someone checks. Phase 0 results are in
 `docs/ja/phase0-criteria.ja.md`.
@@ -29,9 +31,10 @@ Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 
 ```bash
 make build    # → dist/report-studio-mcp, codesigned (never `go build` directly)
-make test     # go test ./...
-make package  # signed + notarized darwin-arm64 zip
-make verify-release
+make test     # go test ./... + tests/validate-skill.sh (the organization's skill validator)
+make package  # signed + notarized darwin-arm64 zip + package-skill → dist/report-manuscript-<version>.zip
+make verify-release  # also verify-skill-zip: refuses a release without the current skill zip
+make install-skill   # unpack the skill zip into ~/.claude/skills (SKILLS_DEST=...)
 ```
 
 `make build` needs `CGO_ENABLED=1` (set by the Makefile) and Xcode's command
@@ -66,7 +69,10 @@ internal/markdown        CommonMark 0.31.2 + GFM extensions + footnotes + alerts
                          html.go exists for the spec tests only
 internal/assets          images (PNG/JPEG by content, sized before decoding) and mermaid diagrams → pictures,
                          one pixel budget
-internal/tools           get_usage (usage.go is the full reference), render, limits.go (phase 0 values)
+internal/tools           get_usage (usage.go is the full reference), render, limits.go (phase 0 values);
+                         skill_test.go holds the bundled skill to the server (see below)
+report-manuscript/       the bundled skill (org ADR-027): writing a manuscript this server typesets well
+tests/validate-skill.sh  the organization's skill validator, vendored byte-identical (org ADR-006)
 e2e/                     builds the binary and drives it over stdio
 scripts/                 codesign / notarize / brew (verbatim from .github/templates)
 docs/{en,ja}/            RFP, phase 0 criteria and results
@@ -87,6 +93,23 @@ each package among the siblings, compared per package with
 | `workdir` | 2026-09-22 | comments; the protected-place test uses the server's own config directory |
 
 When a sibling fixes one of these packages, port the fix here too.
+
+### The bundled skill
+
+`report-manuscript/` is this tool's craft (profile, front matter, caption form,
+chapters, directives, acting on warnings), not a copy of `get_usage`.
+`internal/tools/skill_test.go` holds it to the server:
+
+- every backticked identifier must be a tool, a schema property, a code that
+  `serverCodes` finds raised in the source, a json/toml tag, or a front-matter
+  key that `markdown.Parse` accepts;
+- every `<!-- … -->` must parse as a directive;
+- the `~~~markdown` examples must parse with no warning, and their tables must
+  be paired with a caption by `placement.Items`.
+
+A renamed code, key or directive fails the build until the skill follows. When
+you add a raise site of a new form, make sure `serverCodes`' pattern reads it.
+`get_usage` lacked `workspace_failed` because that pattern read too few forms.
 
 ## Gotchas
 

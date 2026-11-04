@@ -111,6 +111,37 @@ manuscript line. The full reference is the server's `get_usage` tool.
 `work_dir` is required on every call and has no default: an absolute
 directory the caller can read back (organization ADR-021).
 
+## Skill (bundled): report-manuscript
+
+The repository bundles the **report-manuscript** skill: how to write a
+manuscript this server typesets well. It covers choosing the profile and the
+front matter, writing captions in the form the typesetter keeps with their
+table or figure, and grouping short chapters under `formal`. It also covers
+wide tables, chart and diagram layout, when to use the two directives, and
+changing the manuscript in response to each warning. It builds on `get_usage`
+rather than repeating it. How to structure an investigation report in general
+is not this tool's craft and is not in it.
+
+The server and the skill install separately: Homebrew and the binary zip carry
+the server only. Every release attaches the skill as its own asset,
+`report-manuscript-vX.Y.Z.zip`, with the skill folder at the zip's root. Take
+the one from the release that matches your server.
+
+- **gem-agent / lagent** — unpack it into `~/.config/gem-agent/skills/` or
+  `~/.config/lagent/skills/`. Copy, do not link: their sandboxes cannot read
+  `~/.claude`, so a link to an install there does not load.
+- **Claude (desktop app / claude.ai)** — Customize → Skills → upload the zip,
+  and upload the new zip again after each update.
+- **Claude Code** — `unzip report-manuscript-vX.Y.Z.zip -d ~/.claude/skills/`
+
+From a clone, `make install-skill` builds the zip and unpacks it into
+`~/.claude/skills/` (`SKILLS_DEST=<dir>` for another directory). `make test`
+runs the organization's skill validator. `internal/tools/skill_test.go` holds
+the skill to the server. Every tool and profile must be named. Every name the
+skill teaches must exist in the server, and every directive must parse as one.
+The example manuscripts must parse without a warning, with the caption paired
+with its table.
+
 ## Safety
 
 - Every read and write goes through `os.Root` on the work directory; each
@@ -151,8 +182,9 @@ nlink-jp modules named above.
 ## Build
 
 ```bash
-make build    # → dist/report-studio-mcp
-make test
+make build          # → dist/report-studio-mcp
+make test           # go test ./... and the skill validator
+make install-skill  # the skill zip, unpacked into ~/.claude/skills
 ```
 
 ## Design

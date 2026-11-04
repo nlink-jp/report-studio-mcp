@@ -266,7 +266,7 @@ configuration file.
 | Reads and writes go through `os.Root` | A spawned MCP server is not confined by any runtime (org ADR-021 §7), and the work directory is writable from inside the sandbox. Checking a literal path and then opening it is a TOCTOU. pathguard is a floor of places never to touch, not confinement, so it is layered on top of `os.Root` |
 | Appearance switched by profile | Three built-ins plus `extends` overrides. Reading Word templates is complex and not adopted |
 | Page breaks: automatic rules first, only two manuscript directives (v0.2.0) | Real use separated captions from their bodies and broke numbers mid-way (Discussion Log 14). Rules that need no manuscript change prevent most of it; directives are limited to HTML comments, which ordinary Markdown viewers do not show, so manuscripts stay compatible |
-| Where writing guidance lives | How to use the tool lives in `get_usage`. How to write a good report, and the workflow, live in a separate support skill (skills-series, its own RFP). Parameters and error tables are not written into the skill (a source of drift) |
+| Where writing guidance lives | How to use the tool lives in `get_usage`. This tool's craft (profile and front matter, caption form, grouping chapters, directives, acting on warnings, the investigation → manuscript → `render` hand-off) lives in the `report-manuscript` skill bundled in this repository (organization ADR-027, Discussion Log 22). How to structure an investigation report in general, and the data-visualisation method, remain skills-series#1's question. Parameters and error tables are not written into the skill (a source of drift) |
 
 **Complements**: gem-agent and lagent (callers); mermaid-render (diagrams); pathguard (the floor);
 data-toolbox-mcp (analysis charts as images); investigation skills such as incident-research (sources
@@ -362,9 +362,9 @@ A revision after a real user's report (Discussion Log 14), implementing "Page br
 Not steps of this plan; an issue is filed in each project:
 
 - skills-series/mcp-tactics: add the new server to the index and the description (both the body and the
-  trigger line).
-- skills-series: the support skill for writing reports (its own RFP). v0.2.0's manuscript directives and how
-  to write captions belong to what the skill teaches (to be added to skills-series#1).
+  trigger line). → Organization ADR-027 keeps it out; mcp-tactics#1 is closed.
+- skills-series: the support skill for writing reports (its own RFP). → This tool's craft moved into the
+  bundled skill (Discussion Log 22); only what does not depend on this tool remains in skills-series#1.
 
 ### Test policy
 
@@ -624,3 +624,26 @@ No external platform is depended on. Product-side constraints:
     `pagebreak` starts at the top of a page with no empty line above it (two tables in a row too); numbers
     with units or currency signs are not broken; at six positions, caption, header row and first row on one
     page; a code heading with the code's first two lines on one page.
+22. **Writing guidance moves into a bundled skill (2026-11-04).** Organization ADR-027 places a tool's own
+    craft in a skill bundled with the tool instead of a separate skills-series repository
+    (report-studio-mcp#1). This revises item 7's "a separate skills-series repository and RFP": the skill is
+    `report-manuscript/` at this repository's root.
+    - **Content**: choosing the profile and front matter, the caption form the typesetter recognises,
+      grouping short chapters under `formal`, writing tables, charts and diagrams, when to use the two
+      directives, what to change in the manuscript for each warning, and the run: investigation → manuscript
+      → `render` → read the warnings and revise. Parameters, the warning list and the limits stay in
+      `get_usage`. How to structure an investigation report in general, and the data-visualisation method,
+      are not in it (skills-series#1's question).
+    - **Held to the server**: `internal/tools/skill_test.go` checks the skill against the server:
+      - every backticked identifier exists in the server: a tool, a schema property, a code raised in the
+        source, a json/toml tag, or a front-matter key the parser accepts;
+      - every `<!-- … -->` parses as a directive;
+      - the example manuscripts parse with no warning, and their tables are paired with a caption.
+
+      A renamed name fails as soon as the server drops it, so retired names need no separate list.
+    - **Found by the check**: the existing test that `get_usage` names every code read only some of the forms
+      that raise one. Reading more of them showed `workspace_failed` missing from `get_usage`; it is now
+      listed.
+    - **Distribution**: `report-manuscript-<version>.zip`, with the skill folder at its root, is a separate
+      asset on every release. `make package` builds it and `verify-release` refuses a release without it.
+      voice-studio-mcp shipped its skill on two releases and missed it on seventeen (its ADR-0015).

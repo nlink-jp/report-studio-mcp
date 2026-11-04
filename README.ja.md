@@ -92,6 +92,36 @@ logo = "~/Pictures/logo.png"
 `work_dir` はすべての呼び出しで必須で、既定値はありません。呼び出し側が読み戻せる絶対パスの
 ディレクトリを渡します（組織 ADR-021）。
 
+## 同梱スキル: report-manuscript
+
+リポジトリに **report-manuscript** スキルを同梱しています。このサーバーが
+きれいに組める原稿の書き方です。プロファイルと front matter の選び方、
+組版で表や図と同じページに置かれる形のキャプション、`formal` での短い章の
+まとめ方を扱います。幅の広い表、グラフと図の向き、2 つの指示を使う場面、
+警告ごとの原稿の直し方も扱います。`get_usage` を前提にし、その中身は
+繰り返しません。調査報告書一般の構成は、この道具の使いこなしではないので
+含みません。
+
+サーバーとスキルは別々に入れます。Homebrew とバイナリの zip にはサーバーしか
+入っていません。各リリースには、スキルを別のアセット
+`report-manuscript-vX.Y.Z.zip` として付けています（zip の根はスキルの
+フォルダ）。使っているサーバーと同じリリースのものを取ってください。
+
+- **gem-agent / lagent** — `~/.config/gem-agent/skills/` または
+  `~/.config/lagent/skills/` に展開します。リンクではなく写してください。
+  両者のサンドボックスは `~/.claude` を読めないため、そこへのリンクは
+  読み込まれません。
+- **Claude（デスクトップアプリ / claude.ai）** — カスタマイズ → スキル から
+  zip をアップロードします。更新のたびに新しい zip を上げ直してください。
+- **Claude Code** — `unzip report-manuscript-vX.Y.Z.zip -d ~/.claude/skills/`
+
+リポジトリからは、`make install-skill` が zip を作って `~/.claude/skills/` に
+展開します（別の場所は `SKILLS_DEST=<dir>`）。`make test` は組織のスキル検証を
+走らせます。`internal/tools/skill_test.go` はスキルとサーバーを照合します。
+全ツールと全プロファイルに触れていること、スキルが教える名前がすべて
+サーバーにあること、指示がすべて指示として読めることを確かめます。
+例の原稿が警告なしに読め、キャプションが表と組になることも確かめます。
+
 ## 安全のための設計
 
 - 読み書きはすべて作業ディレクトリの `os.Root` を通します。開いたファイルはカーネルが示す実際のパスで
@@ -122,8 +152,9 @@ Apple Silicon の macOS 26 以降。上に挙げた nlink-jp のモジュール�
 ## ビルド
 
 ```bash
-make build    # → dist/report-studio-mcp
-make test
+make build          # → dist/report-studio-mcp
+make test           # go test ./... とスキルの検証
+make install-skill  # スキルの zip を作り ~/.claude/skills に展開
 ```
 
 ## 設計
