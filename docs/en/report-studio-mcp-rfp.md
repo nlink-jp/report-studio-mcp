@@ -526,3 +526,13 @@ No external platform is depended on. Product-side constraints:
       constants as measured initial values, the addition to the support skill) were applied too.
     - **Withdrawn**: the `short_page` warning. It made up for a side effect of the chapter break with a
       message that names no action the model can take ("a report is not a control").
+16. **`formal`'s default chapter break (2026-11-04).** The verifier in item 15 said changing `formal`'s
+    default to `h2` ran into the org lesson "do not change a default because of a minority's complaint". The
+    operator answered: when the aim is clean output, should a chapter break in the middle of a page be
+    acceptable? That lesson is for a behaviour that suits most uses where only the reporter's use differs; it
+    does not apply here. `formal` is the profile for formal documents with a cover and a table of contents;
+    chapters starting at the top of a page is the convention for such documents, and readers open chapters
+    by the page numbers in the contents and hand chapters out separately. A chapter starting mid-page is a
+    defect against this profile's own purpose. → `formal` defaults to `h2` (`standard` and `compact` aim at
+    compact output and stay `none`). The cost of the change (how many pages are added, that no near-empty
+    pages appear) is measured in Phase 4's tests. CHANGELOG and README state it as a default change.
