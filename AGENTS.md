@@ -21,7 +21,8 @@ keep that sentence true until someone checks. Phase 0 results are in
 **In progress: v0.2.0, page breaks and placement** (RFP Phase 4, Discussion
 Log 14-18): implemented and tested, CHANGELOG under [Unreleased], .docx page
 breaks checked by a person in Pages and LibreOffice, pre-release independent
-review done and its findings fixed (Discussion Log 19). Remaining: the
+review and the re-review of its fixes done, changed .docx page breaks
+re-checked in Pages and LibreOffice (Discussion Log 19-21). Remaining: the
 release steps.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and

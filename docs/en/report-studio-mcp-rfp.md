@@ -617,3 +617,10 @@ No external platform is depended on. Product-side constraints:
       no body rows kept its header with the next paragraph. → Aligned.
     - The .docx page-break output changed after the check in Pages and LibreOffice (item 18). → A person
       checks the changed cases again with documents made for them.
+
+21. **Re-check of the changed .docx page breaks (2026-11-04).** The operator opened the two documents made
+    for item 20's changes in Pages and LibreOffice and answered "no problems in all four" (two documents,
+    two applications). The items: no blank page after the cover; chapters start a new page; a table after
+    `pagebreak` starts at the top of a page with no empty line above it (two tables in a row too); numbers
+    with units or currency signs are not broken; at six positions, caption, header row and first row on one
+    page; a code heading with the code's first two lines on one page.
