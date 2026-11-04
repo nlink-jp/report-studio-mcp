@@ -20,8 +20,9 @@ keep that sentence true until someone checks. Phase 0 results are in
 
 **In progress: v0.2.0, page breaks and placement** (RFP Phase 4, Discussion
 Log 14-18): implemented and tested, CHANGELOG under [Unreleased], .docx page
-breaks checked by a person in Pages and LibreOffice. Remaining before release:
-the pre-release independent review and the release steps.
+breaks checked by a person in Pages and LibreOffice, pre-release independent
+review done and its findings fixed (Discussion Log 19). Remaining: the
+release steps.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 `docs/en/report-studio-mcp-rfp.md`.
@@ -129,4 +130,11 @@ When a sibling fixes one of these packages, port the fix here too.
   .docx must not get them: Word keeps them in copied text.
 - Caption, directive and number rules live once, in internal/placement; the
   PDF and the .docx both read from there. Change them there, never in one
-  typesetter.
+  typesetter (a keep-with-next fix made only in the .docx left the PDF and
+  the chapter breaks wrong: pre-release review).
+- A plan's key includes the text style: the same paragraph is measured as
+  the start of a quote and placed in the quote's colour. Measure a block in
+  the style its placement uses.
+- Digits inside an ASCII word holding a letter are an identifier, not a
+  number (placement.NumberTokens). Counting hash digits as numbers made a
+  hash column as wide as the hash and broke the real numbers.
