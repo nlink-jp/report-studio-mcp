@@ -37,11 +37,28 @@ MANUSCRIPT
   CAUTION). Optional front matter, first line exactly "---", then "key: value" lines, then
   "---". Keys: title, subtitle, author, date, classification (shown at the top of every page,
   e.g. 社外秘), profile, cover and toc (true/false: override the profile's cover page and
-  table of contents). Without a title, the first heading is the PDF's title.
+  table of contents), break_before (h1, h2 or none: override the profile's page break before
+  chapters). Without a title, the first heading is the PDF's title.
   Headings: levels 1-3 (deeper ones look like 3). Images: ![caption](relative/path.png) on a
   line of their own; PNG or JPEG; the path is relative to the manuscript. Links: only http,
   https and mailto become clickable; other schemes are shown as text. Defanged indicators
   (hxxp://, example[.]com) are shown exactly as written — keep them defanged.
+
+PAGE BREAKS  (automatic; nothing to write for most documents)
+  A heading, and a caption with what it captions, stay on the same page as the start of what
+  follows; a heading is never split; a paragraph never leaves a single line alone on a page.
+  A caption is a paragraph of only bold text, or one starting 表1： 図1： Table 1: Figure 1:,
+  written directly before a table, chart, mermaid diagram, image or code block (an italic
+  note line between them, e.g. *出典: ...*, joins it). A chart, diagram or image that does not
+  fit the rest of a page is shrunk to fit (not below 70%) or moves on with its caption.
+  Numbers in table cells (1,234,567  12.34%  ▲１２．３４％) are not broken across lines.
+  break_before (profile; front matter overrides): h2 starts every top-level ## heading on a
+  new page (formal does this), h1 every #, none never. A run of headings breaks once.
+  Two directives, each an HTML comment alone on its own lines at the top level of the body:
+    <!-- pagebreak -->       start a new page here (nothing at the top of a page)
+    <!-- keep-with-next -->  keep the next block on the same page as the start of the one
+                             after it (the next block moves whole when it fits a page)
+  Any other HTML comment is shown as text.
 
 CHARTS  (a fenced block whose info string is "chart"; its content is JSON)
   {"type": "bar" | "line" | "scatter",
@@ -64,7 +81,8 @@ MERMAID  (a fenced block whose info string is "mermaid")
 
 PROFILES
   Built in: standard (A4, Hiragino Sans, no cover or contents), formal (cover, table of
-  contents, Hiragino Mincho body, wider margins), compact (narrow margins, smaller type).
+  contents, Hiragino Mincho body, wider margins, each ## chapter on a new page), compact
+  (narrow margins, smaller type).
   The operator may add profiles in config.toml ($XDG_CONFIG_HOME, ~/.config or
   ~/Library/Application Support, under report-studio-mcp/): a [profiles.NAME] table with
   extends = "standard" | "formal" | "compact" and any of paper ("A4"/"Letter"), margin_mm,
@@ -72,7 +90,7 @@ PROFILES
   (PostScript names), body_size, code_size, table_size, table_min_size, note_size,
   title_size, heading_sizes (three), line_gap, text_color, muted_color, link_color,
   rule_color, code_background, chart_palette (#rrggbb), cover, toc, toc_title, logo
-  (absolute path of a PNG/JPEG for the cover). You choose a profile by name; you cannot
+  (absolute path of a PNG/JPEG for the cover), break_before ("h1", "h2" or "none"). You choose a profile by name; you cannot
   change one.
 
 LIMITS
@@ -106,7 +124,8 @@ ERRORS  (code — meaning — what to do)
   font_missing — a profile names a font that is not installed.
 
 WARNINGS  (the PDF is written; each names its manuscript line)
-  raw_html — HTML is shown as text. deep_heading — a level 4-6 heading looks like level 3.
+  raw_html — HTML (other than the two directives) is shown as text.
+  deep_heading — a level 4-6 heading looks like level 3.
   unknown_front_matter_key / invalid_front_matter_line / invalid_front_matter_value — that
   front matter line is ignored.
   link_scheme — a link that is not http/https/mailto is shown as text.
@@ -118,4 +137,9 @@ WARNINGS  (the PDF is written; each names its manuscript line)
   duplicate_front_matter_key — a key is given twice; the later value is used.
   control_characters — characters a .docx cannot carry were removed from it.
   table_wrapped — a wide table is set small and its cells wrap.
+  cell_token_split — a table is too wide to keep its numbers whole; the message names the
+  columns — use fewer columns or split the table.
+  caption_separated — a caption and what it captions are too tall for one page together.
+  mermaid_scaled — a diagram is shrunk so far its text is under 60% of the body size — use
+  flowchart TB instead of LR, or shorter labels.
 `
