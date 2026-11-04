@@ -18,12 +18,9 @@ available; operator's decision 2026-11-04) — the README's Limitations say so;
 keep that sentence true until someone checks. Phase 0 results are in
 `docs/ja/phase0-criteria.ja.md`.
 
-**In progress: v0.2.0, page breaks and placement** (RFP Phase 4, Discussion
-Log 14-18): implemented and tested, CHANGELOG under [Unreleased], .docx page
-breaks checked by a person in Pages and LibreOffice, pre-release independent
-review and the re-review of its fixes done, changed .docx page breaks
-re-checked in Pages and LibreOffice (Discussion Log 19-21). Remaining: the
-release steps.
+v0.2.0 added page breaks and placement (RFP Phase 4, Discussion Log 14-21):
+reviewed, re-reviewed, and the .docx page breaks checked by a person in Pages
+and LibreOffice.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 `docs/en/report-studio-mcp-rfp.md`.
