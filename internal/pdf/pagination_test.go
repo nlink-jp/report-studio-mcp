@@ -2,11 +2,13 @@ package pdf
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 
 	md "github.com/nlink-jp/report-studio-mcp/internal/markdown"
+	"github.com/nlink-jp/report-studio-mcp/internal/theme"
 )
 
 // Placement rules of "Page breaks and placement" (RFP §2, v0.2.0). Each test
@@ -442,4 +444,63 @@ func TestKeptCodeBlockMovesWhole(t *testing.T) {
 			t.Errorf("filler %d: code on pages %v, the next paragraph on page %d", n, pages, pageOf(r, "後に続く段落")+1)
 		}
 	})
+}
+
+// The reporter's synthetic sample (RFP Discussion Log 14), set in the formal
+// profile with every amount of text before it: the captions stay with what
+// they caption, the numbers stay whole, and a chart is shrunk to no less than
+// 70% or moved on with its caption. The log records what each variant did,
+// the measurement behind the initial values (Discussion Log 17).
+func TestReporterSample(t *testing.T) {
+	raw, err := os.ReadFile("testdata/reporter-sample.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := opts()
+	o.Theme = theme.Formal()
+	r0, _ := layout(t, parse(t, strings.Replace(string(raw), "{{filler}}", "", 1)), o)
+	var orig float64
+	for _, p := range r0.Pages {
+		for _, op := range p.Ops {
+			if f, ok := op.(FigOp); ok {
+				orig = f.Scale
+			}
+		}
+	}
+	shrunk, moved := 0, 0
+	for n := 0; n <= 60; n++ {
+		src := strings.Replace(string(raw), "{{filler}}", filler(n), 1)
+		r, _ := layout(t, parse(t, src), o)
+		checkPages(t, r, o.Theme)
+		if c, b := pageOf(r, "表1："), pageOf(r, "種別あ"); c != b {
+			t.Errorf("filler %d: table caption on page %d, table on page %d", n, c+1, b+1)
+		}
+		capPage, figPage, scale, figY := pageOf(r, "図1："), -1, 0.0, 0.0
+		for pi, p := range r.Pages {
+			for _, op := range p.Ops {
+				if f, ok := op.(FigOp); ok {
+					figPage, scale, figY = pi, f.Scale/orig, f.Y
+				}
+			}
+		}
+		if capPage != figPage {
+			t.Errorf("filler %d: chart caption on page %d, chart on page %d", n, capPage+1, figPage+1)
+		}
+		if scale < minShrink-0.001 {
+			t.Errorf("filler %d: chart at %.0f%%", n, scale*100)
+		}
+		if scale < 0.999 {
+			shrunk++
+			t.Logf("filler %2d: chart shrunk to %.0f%%", n, scale*100)
+		}
+		if figPage > pageOf(r, fmt.Sprintf("行 %02d", max(n-1, 0))) && n > 0 && figY < o.Theme.MarginT+60 {
+			moved++
+		}
+		for _, num := range []string{"1,234,567", "9,876,543", "7,654,321", "2,222,222", "12.34%", "56.78%"} {
+			if pageOf(r, num) < 0 {
+				t.Errorf("filler %d: %s is broken", n, num)
+			}
+		}
+	}
+	t.Logf("61 variants: the chart was shrunk in %d and moved on in %d", shrunk, moved)
 }
