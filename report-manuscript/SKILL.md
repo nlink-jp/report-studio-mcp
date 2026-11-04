@@ -108,7 +108,7 @@ order and refer to the numbers in the text.
 | AS64511 | Example Cloud | 3,208 | 2 |
 ~~~
 
-A caption written any other way — a plain sentence, a heading, a caption after
+A caption written any other way — a plain sentence, a caption after
 the table — is ordinary text, and the typesetter may leave it at the foot of one
 page with its table on the next. `caption_separated` means the caption and its
 body together are taller than a page: shorten or split the body.
@@ -178,9 +178,13 @@ says the output differs from what you wrote.
 | `deep_heading` | Restructure into three levels |
 | `inline_image` | Put the image on its own line |
 | `raw_html` | Remove it, or write it as Markdown |
-| `unknown_front_matter_key`, `invalid_front_matter_value`, `invalid_front_matter_line` | Fix that front-matter line; until then it is ignored |
+| `unclosed_front_matter` | Close the front matter with a `---` line. Until then the whole block is read as text, and the title, profile and classification are all lost |
+| `unknown_front_matter_key`, `invalid_front_matter_value`, `invalid_front_matter_line`, `duplicate_front_matter_key` | Fix that front-matter line; until then it is ignored (for a duplicate, the later value wins) |
+| `link_scheme` | Only http, https and mailto links are clickable; write anything else as plain text |
 
-An error means nothing was written; `get_usage` has what to do for each.
+An error means the call failed; `get_usage` has what to do for each. A format
+written before the failure, or a file from an earlier render, may still be in
+the output directory — hand over files only from a call that succeeded.
 
 ## 7. Hand over
 

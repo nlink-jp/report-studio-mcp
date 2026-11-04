@@ -121,9 +121,9 @@ ERRORS  (code — meaning — what to do)
   outlast its 45 s) — split or shrink the content.
   internal_error — the server failed unexpectedly on this input and is still running — report
   it to the operator with the manuscript.
-  workspace_failed — the work directory could not be opened or the typesetter could not start
-  — check that work_dir is still there and readable, then retry; if it repeats, tell the
-  operator the message.
+  workspace_failed — a file under work_dir could not be read or written, or the typesetter
+  failed to start or to finish — check that work_dir is still there, readable and has room,
+  then retry; if it repeats, tell the operator the message.
   profile_unknown — no such profile — use one listed under THIS MACHINE.
   config_invalid — the operator's config.toml cannot be used — tell the operator; the
   message names the file and the problem.
