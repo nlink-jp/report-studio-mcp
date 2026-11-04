@@ -122,3 +122,11 @@ func TestWidowControlAndNumberColumns(t *testing.T) {
 		t.Errorf("grid %v: the number column is narrower than its number", grid)
 	}
 }
+
+func TestKeepWithNextIsIgnoredOnTablesAndLists(t *testing.T) {
+	o := fakeOptions(t, nil)
+	data, _ := write(t, "<!-- keep-with-next -->\n\n| a |\n|---|\n| 1 |\n\n後。\n\n<!-- keep-with-next -->\n\n- 項目\n\n後。\n", o)
+	if strings.Contains(string(unzipDocx(t, data).parts["word/document.xml"]), "keepNext") {
+		t.Error("keep-with-next applied to a table or list")
+	}
+}

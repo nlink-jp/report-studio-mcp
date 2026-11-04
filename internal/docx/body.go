@@ -119,11 +119,22 @@ func (w *writer) blocks(bs []markdown.Block, c ctx) {
 			w.forceBreak()
 		}
 		for _, it := range g.Items {
-			w.keep = it.Keep
+			w.keep = it.Keep && keepable(it.Block)
 			w.block(it.Block, c)
 			w.keep = false
 		}
 	}
+}
+
+// keepable: the blocks a keep-with-next directive applies to, as in the PDF.
+// Tables, lists and quotes may run past a page; the directive is ignored on
+// them.
+func keepable(b markdown.Block) bool {
+	switch b.(type) {
+	case *markdown.Table, *markdown.List, *markdown.BlockQuote, *markdown.Alert:
+		return false
+	}
+	return true
 }
 
 // forceBreak starts the next paragraph on a new page. Several in a row are

@@ -89,7 +89,6 @@ func (w *writer) table(t *markdown.Table, c ctx) {
 			}
 			b.WriteString(`</w:tcPr>`)
 			p := newPPr("TableText")
-			p.keepNext = w.keep
 			switch t.Align[i] {
 			case markdown.AlignLeft:
 				p.jc = "left"

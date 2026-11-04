@@ -504,3 +504,14 @@ func TestReporterSample(t *testing.T) {
 	}
 	t.Logf("61 variants: the chart was shrunk in %d and moved on in %d", shrunk, moved)
 }
+
+func TestKeepWithNextIsIgnoredOnTablesAndLists(t *testing.T) {
+	rows := "| a |\n|---|\n" + strings.Repeat("| 行 |\n", 10)
+	sweep(t, 60, func(n int) {
+		with, _ := layout(t, parse(t, filler(n)+"<!-- keep-with-next -->\n\n"+rows+"\n後。\n"), opts())
+		without, _ := layout(t, parse(t, filler(n)+rows+"\n後。\n"), opts())
+		if len(with.Pages) != len(without.Pages) || pageOf(with, "行") != pageOf(without, "行") {
+			t.Errorf("filler %d: the directive moved a table", n)
+		}
+	})
+}
