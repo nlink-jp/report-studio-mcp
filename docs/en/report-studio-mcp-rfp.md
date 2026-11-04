@@ -133,10 +133,11 @@ from the policy that appearance never decides pass or fail).
 - **Numbers are not broken**: a number in a table cell (digits with `,` and `.`, including a leading sign or
   currency symbol and a trailing `%`) does not wrap mid-way. A column's minimum width is at least the width
   of the longest number in it. When the minimum widths together exceed the text width, the table shrinks
-  and wraps as before, and one warning per table says numbers broke. Digits inside an ASCII word holding a
-  letter (hashes, UUIDs, `CVE-2024-12345`) are identifiers: not covered and not counted toward column widths
-  (breaking them does not cause a misread digit; landscape pages are meant to handle them). An IP address
-  is a number and stays whole. Whether
+  and wraps as before, and one warning per table says numbers broke. An ASCII word in which a letter comes
+  before a digit (hashes, UUIDs, `CVE-2024-12345`, `ID1234`) is an identifier: not covered and not counted
+  toward column widths (landscape pages are meant to handle them). Letters after the digits are a unit
+  (`100mg`, `+1.5pt`) and the number stays a number, as does one starting with a currency sign after letters
+  (`US$1,234`). An IP address is a number too. Whether
   Core Text has break opportunities inside numbers with full-width digits, `−` (U+2212) or signs such as
   `▲` is measured before implementing.
 - **Page break before chapters**: the profile's `break_before` (`h1` / `h2` / `none`) breaks the page before
@@ -604,3 +605,15 @@ No external platform is depended on. Product-side constraints:
       their names said, and no test that the .docx gets the settings.
     - **Accepted remainder**: a table's header row is typeset three times and its first row twice (not
       quadratic).
+
+20. **Re-review of the fixes (2026-11-04).** Another verifier reviewed the diff of item 19's fixes.
+    - **A regression my fix introduced**: "digits in a word holding a letter are an identifier" also caught
+      numbers with a unit or with a currency sign after letters (`1,234,567KB`, `100mg`, `+1.5pt`,
+      `US$1,234`), which then broke silently (v0.1.1 kept them whole). → An identifier is a word in which a
+      letter comes before a digit; nothing before a sign or currency symbol is looked at.
+    - The .docx counted a heading in a list as body (the PDF draws the list marker with the heading and does
+      not). → Only headings in quotes and alerts count as body.
+    - README and get_usage stated keep-with-next's scope differently from the code and the RFP; a table with
+      no body rows kept its header with the next paragraph. → Aligned.
+    - The .docx page-break output changed after the check in Pages and LibreOffice (item 18). → A person
+      checks the changed cases again with documents made for them.

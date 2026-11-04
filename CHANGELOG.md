@@ -18,8 +18,9 @@ All notable changes to this project are documented here. The format follows
   - charts, diagrams and images that do not fit the rest of a page are shrunk
     to fit (not below 70%) or move on with their caption;
   - numbers in table cells (`1,234,567`, `12.34%`, `▲１２．３４％`, IP
-    addresses) are not broken across lines; identifiers mixing letters and
-    digits (hashes, UUIDs, CVE IDs) are not treated as numbers;
+    addresses, numbers with units such as `100mg` or `US$1,234`) are not
+    broken across lines; identifiers where letters come before digits
+    (hashes, UUIDs, CVE IDs) are not treated as numbers;
   - `break_before` (`h1`, `h2`, `none`) in profiles and the front matter;
   - the directives `<!-- pagebreak -->` and `<!-- keep-with-next -->`;
   - warnings `cell_token_split`, `caption_separated` and `mermaid_scaled`;
