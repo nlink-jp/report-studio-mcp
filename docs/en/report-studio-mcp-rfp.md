@@ -98,47 +98,75 @@ Everything else is a warning and the document is still written:
 **Page breaks and placement (v0.2.0)**
 
 Rules that work without changing the manuscript come first; manuscript directives are an escape hatch
-"for when the intent must be said", and there are only two. The PDF decides its own page breaks; in the
-.docx Word decides them, so paragraphs carry the matching properties (`keepNext`, `keepLines`,
-`pageBreakBefore`).
+"for when the intent must be said", and there are only two. Every rule is specified behaviour, and the
+tests check that a rule was followed or, where it could not be, that its warning was given (this is apart
+from the policy that appearance never decides pass or fail).
 
+- **The start of a block**: the "start" the rules below use is the smallest first part the block's own
+  placement allows. A paragraph follows the widow/orphan rule below: the whole of it at three lines or
+  fewer, two lines at four or more. A list: the start of its first item's first block. A table: the
+  header row and the first row. Code: its padding and two lines. A chart, diagram or image: the whole of it
+  (at the smallest size the shrinking below allows). A quote or callout: the callout's label line and the
+  start of its first block. The start comes from the same computation that places the block (it is not
+  counted separately).
 - **Captions**: a paragraph made only of bold text, or one starting `表N：`, `図N：`, `Table N:` or
   `Figure N:` (N a number; full- and half-width colons and minor separator variants accepted), is a
-  caption. It is paired with what follows only when that is a table, chart, diagram, image or code block.
-  A paragraph of only italics right after the caption (source, note) joins the pair. Captions placed below
-  their body are not handled (an image's description stays under the image as before).
-- **Keep with next**: a heading (levels 1-3) or a caption group is placed on the same page as the start of
-  the next block. The start is: two lines of a paragraph or list; a table's header row and first row; two
-  lines of code; the whole chart, diagram or image (at its size after the shrinking below); for a quote or
-  callout, the start of its first block. If they do not fit, they move to the next page together.
-  Consecutive headings form one group. A group that would not fit on a fresh page either is placed in
-  order without this rule.
+  caption. It is paired with what follows only when, inside the same container (the body, a list item, a
+  quote), that is a table, chart, diagram, image (a paragraph of only images) or code block. A paragraph of
+  only italics right after the caption (source, note) joins the pair. Captions placed below their body are
+  not handled (an image's description stays under the image as before).
+- **Keep with next**: a heading of any level, or a caption group, is placed on the same page as the start
+  of the next block; if they do not fit, they move to the next page together. Consecutive headings (with
+  captions between them, too) form one group. A group is measured once, and measuring stops as soon as it
+  exceeds the body height of a fresh page; such a group is placed in order without this rule. Nothing is
+  carried past a group (a page-break directive or a chapter break ends it).
 - **Headings are not split**: however many lines a heading wraps to, no page break falls inside it.
-- **Shrinking charts and figures**: when a chart, mermaid diagram or image does not fit what is left of the
-  page, it is shrunk to fit in place if the shrunk size is at least 70% of the original and at least eight
-  body lines are left; otherwise it moves to the next page (with its caption group).
+- **Shrinking charts and figures**: a chart, mermaid diagram or image is first sized as today, to the text
+  width and the page-height caps; that is its "original size". When the original size does not fit what is
+  left of the page (after the caption group's own lines), it is shrunk to fit in place if the shrunk size
+  is at least 70% of the original and at least eight body lines are left; otherwise it moves to the next
+  page with its caption group. Whether a group fits a fresh page is also measured with this shrinking
+  allowed. 70% and eight lines are initial values, measured on the test data below and recorded.
 - **Widows and orphans**: a paragraph of three or more lines never leaves only its first line at the foot of
   a page nor carries only its last line to the next. Not applied to code or table cells.
 - **Numbers are not broken**: a number in a table cell (digits with `,` and `.`, including a leading sign or
   currency symbol and a trailing `%`) does not wrap mid-way. A column's minimum width is at least the width
   of the longest number in it. When the minimum widths together exceed the text width, the table shrinks
-  and wraps as before and the cells whose numbers broke are warned about. Alphanumeric IDs are not covered
-  (breaking at a hyphen does not cause a misread digit; landscape pages are meant to handle them).
-- **Page break before chapters**: the profile's `break_before` (`h1` / `h2` / `none`) always breaks the page
-  before headings of that level and above. `formal` defaults to `h2`; `standard` and `compact` to `none`.
-  The front matter's `break_before` overrides it per manuscript. No break before a heading already at the
-  top of a page (no blank pages).
-- **Manuscript directives**: a one-line HTML comment `<!-- pagebreak -->` (break the page here) and
-  `<!-- keep-with-next -->` (keep the next block on the same page as the start of the block after it).
-  Case and inner whitespace may vary. Viewers that do not know the directives show nothing, as for any
-  comment.
+  and wraps as before, and one warning per table says numbers broke. Alphanumeric IDs are not covered
+  (breaking at a hyphen does not cause a misread digit; landscape pages are meant to handle them). Whether
+  Core Text has break opportunities inside numbers with full-width digits, `−` (U+2212) or signs such as
+  `▲` is measured before implementing.
+- **Page break before chapters**: the profile's `break_before` (`h1` / `h2` / `none`) breaks the page before
+  headings of that level and above at the outermost level of the body. It breaks only when the page already
+  holds something other than headings and the title block (so a run of headings breaks only before its
+  first; the title block, and a level-1 heading the cover uses as its title, belong to the first chapter;
+  never at the top of a page). Not applied to headings inside quotes, lists or footnotes. `formal` defaults
+  to `h2`; `standard` and `compact` to `none`. The front matter's `break_before` overrides it per
+  manuscript. A bad value is the existing `invalid_front_matter_value` in front matter, and a
+  configuration error in the configuration file.
+- **Manuscript directives**: a block at the outermost level of the body made only of an HTML comment whose
+  content is `pagebreak` or `keep-with-next` (case and inner whitespace may vary; anything after `-->` makes
+  it not a directive). A directive raises no `raw_html` warning and is not shown. A directive does not count
+  as a block (it is transparent to caption groups and starts). Directives inside containers, and comments
+  with any other content, are shown as text as before.
+  - `<!-- pagebreak -->`: break the page here. Nothing happens at the top of a page (several in a row make
+    no blank pages).
+  - `<!-- keep-with-next -->`: keep the end of the next block on the same page as the start of the block
+    after it. It does not make the next block unsplittable.
+- **.docx**: Word decides the page breaks, so paragraphs carry the matching properties. Caption groups get
+  `keepNext`; chapter breaks and `pagebreak` set `pageBreakBefore` on the next paragraph (no paragraph made
+  only for a break; not on the first heading right after the cover and TOC, nor on the second and later
+  headings of a run). Set per paragraph, not in the heading styles. Body paragraphs carry `widowControl`
+  explicitly. Table column widths take the longest number as their minimum, as in the PDF. What these
+  properties mean is read in the relevant clauses of ECMA-376 5th edition Part 1 before implementing, and
+  the clause numbers are recorded. Word cannot be checked (Discussion Log 13), so a person checks the page
+  breaks in Pages and LibreOffice.
 - **Warnings** (output is still written; with line numbers):
   - `caption_separated`: a caption and its body ended up on different pages (the group does not fit a page).
-  - `cell_token_split`: a number in a table cell broke across lines; with the column header and the start of
-    the value.
-  - `mermaid_scaled`: a diagram was shrunk so its text is below 60% of the body size; with the scale.
-  - `short_page`: the page before a chapter break holds five body lines or fewer of the previous chapter's
-    end; with the number of lines.
+  - `cell_token_split`: a number in a table cell broke across lines; one per table, listing the headers of
+    the columns where it happened.
+  - `mermaid_scaled`: a diagram was shrunk so its text is below 60% of the body size; with the scale (60% is
+    an initial value).
 
 Out of scope (later versions; Discussion Log 14): landscape pages, a distinct look for level-4 headings,
 explicit caption syntax with automatic numbering, captions below their body, switching a mermaid diagram's
@@ -299,15 +327,23 @@ Write and commit the pass criteria first, then measure. A failure sends us back 
 
 A revision after a real user's report (Discussion Log 14), implementing "Page breaks and placement" above.
 
+- First, the reported problems are written as tests that fail on v0.1.0 (the split and stranded headings
+  were inferred from code, so they must be shown to fail first).
 - The reporter's synthetic sample becomes test data. Across every dummy line count, the reported problems
   (separated captions, numbers broken mid-way, a wide diagram shrunk) are shown fixed, or warned about
-  where they cannot be.
+  where they cannot be. The initial values 70%, eight lines and 60% are measured across all of them and
+  recorded.
 - Per rule, a test checks positions on the page (heading and the next block's start on one page, no split
-  heading, no widow or orphan, no broken number, shrink of at least 70%, breaks where directed).
-- In the .docx, the XML is checked for `keepNext` and `pageBreakBefore` on caption groups, directives and
-  chapter breaks (Word's pagination itself cannot be checked; Discussion Log 13).
-- Time: measuring the next block's start stays proportional to the page count (measured on a manuscript at
-  every limit).
+  heading, no widow or orphan, no broken number, shrink of at least 70%, breaks where directed, no blank
+  page from a title block followed by headings).
+- Measuring a start is a side-effect-free function that shares each block's computation (table column
+  widths and type size, a paragraph's lines, chart and figure sizes) with its placement. A paragraph's start
+  is measured from its first window only. Time is measured on a manuscript at every limit and on one with
+  long runs of headings and directives next to the largest table. Added pages count toward the page limit
+  (no trial page breaks).
+- In the .docx, the XML is checked for the properties, and a person checks the page breaks in Pages and
+  LibreOffice.
+- A test confirms the feature is wired into `pdf.Options` and the production .docx call.
 - Independent verification when the design is settled and before release; README (en/ja), `get_usage` and
   CHANGELOG updated.
 
@@ -317,7 +353,8 @@ Not steps of this plan; an issue is filed in each project:
 
 - skills-series/mcp-tactics: add the new server to the index and the description (both the body and the
   trigger line).
-- skills-series: the support skill for writing reports (its own RFP).
+- skills-series: the support skill for writing reports (its own RFP). v0.2.0's manuscript directives and how
+  to write captions belong to what the skill teaches (to be added to skills-series#1).
 
 ### Test policy
 
@@ -461,5 +498,31 @@ No external platform is depended on. Product-side constraints:
       `pagebreak` and `keep-with-next`. Landscape pages, a distinct level-4 look, and explicit captions with
       numbering are left for later versions.
     - **Not adopted**: switching a mermaid diagram's direction (LR to TB) automatically would rearrange the
-      author's diagram, so only the warning (`mermaid_scaled`) is given. The `short_page` warning was added
-      because the chapter break needs it.
+      author's diagram, so only the warning (`mermaid_scaled`) is given.
+15. **Independent verification of the design (2026-11-04).** A verifier without the conversation's history
+    checked it against the org conventions, ADRs, knowledge base, memory and the current code (2 high,
+    8 medium, 10 low). Adopted and fixed:
+    - The chapter break contradicted "consecutive headings form one group": `# Title` followed by `## 1.`
+      left a page holding only the level-1 heading. → Break only when the page holds something other than
+      headings and the title block; outermost level of the body only.
+    - "Two lines of a paragraph" as the start disagreed with the widow/orphan rule, stranding a heading
+      before a three-line paragraph. → The start is "the smallest first part the placement allows", from the
+      same computation.
+    - In the .docx, a chapter break right after the cover's and TOC's page breaks would make a blank page. →
+      Per paragraph, not on the first heading nor on later headings of a run; no break-only paragraphs.
+    - How to measure a start was not said (the layout is full of side effects, trial-and-rollback is
+      fragile, and measuring separately doubles the table and long-paragraph work). → Side-effect-free
+      functions sharing the computation.
+    - Headings at level 4 and deeper fell outside "levels 1-3", a regression. → All levels.
+    - Unbroken numbers and widows/orphans were PDF-only. → Column-width minimums and `widowControl` in the
+      .docx too.
+    - The meaning of the .docx properties, and whether Core Text breaks inside full-width digits or signs,
+      were unverified (org ADR-023). → Read the spec clauses and measure before implementing; besides the
+      XML check, a person checks Pages and LibreOffice.
+    - Gaps in the directives (`raw_html` warning, text after `-->`, inside containers, at the top of a page,
+      relation to groups). → Stated under "Manuscript directives" above.
+    - The low findings (caption groups only within one container, the definition of "original size" for
+      shrinking, one warning per table, handling bad values, a wiring test, the relation to the test policy,
+      constants as measured initial values, the addition to the support skill) were applied too.
+    - **Withdrawn**: the `short_page` warning. It made up for a side effect of the chapter break with a
+      message that names no action the model can take ("a report is not a control").
