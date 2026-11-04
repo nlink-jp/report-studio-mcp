@@ -572,3 +572,8 @@ No external platform is depended on. Product-side constraints:
     - **Time**: a manuscript with 80 groups of headings, directives and captions and a 2,000-row table took
       0.18 s; eight times the groups stayed within proportion.
 
+18. **A person checked the .docx page breaks (2026-11-04).** The operator opened two check documents in
+    Pages and LibreOffice and answered "looks fine". The items were: chapters (`h2`) start at the top of a
+    page; no blank page between the contents and chapter 1 or anywhere else; captions on the same page as
+    their table or chart; a new page after `pagebreak`; numbers in tables not broken mid-way. The answer
+    did not break down per item or per application. Word was not checked (Discussion Log 13).

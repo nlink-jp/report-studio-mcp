@@ -19,9 +19,9 @@ keep that sentence true until someone checks. Phase 0 results are in
 `docs/ja/phase0-criteria.ja.md`.
 
 **In progress: v0.2.0, page breaks and placement** (RFP Phase 4, Discussion
-Log 14-17): implemented and tested, CHANGELOG under [Unreleased]. Remaining
-before release: a person checks the .docx page breaks in Pages and
-LibreOffice, the pre-release independent review, and the release steps.
+Log 14-18): implemented and tested, CHANGELOG under [Unreleased], .docx page
+breaks checked by a person in Pages and LibreOffice. Remaining before release:
+the pre-release independent review and the release steps.
 
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 `docs/en/report-studio-mcp-rfp.md`.
