@@ -419,7 +419,7 @@ func TestLinkLabelCaseFolding(t *testing.T) {
 }
 
 func TestDirectives(t *testing.T) {
-	src := "<!-- pagebreak -->\n\n<!--  Keep-With-Next  -->\n\n<!-- pagebreak --> x\n\n<!-- landscape -->\n\n> <!-- pagebreak -->\n\n<!-- pagebreak --><!-- pagebreak -->\n"
+	src := "<!-- pagebreak -->\n\n<!--  Keep-With-Next  -->\n\n<!-- pagebreak --> x\n\n<!-- landscape -->\n\n> <!-- pagebreak -->\n\n<!-- pagebreak --><!-- pagebreak -->\n\n<!-- page break -->\n"
 	d := Parse([]byte(src))
 	var kinds []string
 	for _, b := range d.Children {
@@ -434,12 +434,12 @@ func TestDirectives(t *testing.T) {
 			}
 		}
 	}
-	want := []string{"pagebreak", "keep-with-next", "html", "html", "quote>html", "html"}
+	want := []string{"pagebreak", "keep-with-next", "html", "html", "quote>html", "html", "html"}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("blocks %v, want %v", kinds, want)
 	}
 	// Directives are not raw HTML; the rest still warns.
-	if got := warningKeys(d); !reflect.DeepEqual(got, []string{"5:raw_html", "7:raw_html", "9:raw_html", "11:raw_html"}) {
+	if got := warningKeys(d); !reflect.DeepEqual(got, []string{"5:raw_html", "7:raw_html", "9:raw_html", "11:raw_html", "13:raw_html"}) {
 		t.Errorf("warnings %v", got)
 	}
 	// Without extensions (the CommonMark spec run) a directive is plain HTML.

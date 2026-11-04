@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,9 +9,11 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -361,5 +364,44 @@ func TestManyChartsInWord(t *testing.T) {
 	put(t, dir, "c.md", []byte(b.String()))
 	if _, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "c.md"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// break_before and the number widths reach the .docx through the production
+// wiring, not only the PDF: the chapter breaks, and a number column at least
+// as wide as Core Text measures the number in the table font.
+func TestDocxCarriesThePageBreakSettings(t *testing.T) {
+	dir := workDir(t)
+	put(t, dir, "r.md", []byte("---\nbreak_before: h1\n---\n\n# 一\n\n本文。\n\n# 二\n\n| 説明 | 金額 |\n|---|---:|\n| "+strings.Repeat("長い説明の文章", 30)+" | 1,234,567,890 |\n"))
+	res, err := call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "r.md", "formats": []string{"docx"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(res.Outputs[0].AbsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	var xml []byte
+	for _, f := range zr.File {
+		if f.Name == "word/document.xml" {
+			rc, _ := f.Open()
+			xml, _ = io.ReadAll(rc)
+			rc.Close()
+		}
+	}
+	if n := strings.Count(string(xml), "<w:pageBreakBefore/>"); n != 1 {
+		t.Errorf("%d page breaks before, want 1 (before 二)", n)
+	}
+	m := regexp.MustCompile(`<w:gridCol w:w="(\d+)"/>`).FindAllStringSubmatch(string(xml), -1)
+	if len(m) != 2 {
+		t.Fatalf("grid %v", m)
+	}
+	var last int
+	fmt.Sscan(m[1][1], &last)
+	// Core Text: "1,234,567,890" in Hiragino Sans W3 at 9 pt is about 65.6 pt;
+	// with 2 x 4.05 pt of margin that is at least 1475 twips.
+	if last < 1475 {
+		t.Errorf("number column %d twips is narrower than the number", last)
 	}
 }

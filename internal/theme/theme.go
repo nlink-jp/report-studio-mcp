@@ -63,17 +63,6 @@ func BreakLevel(s string) (int, bool) {
 	return 0, false
 }
 
-// BreakName is BreakLevel's inverse.
-func BreakName(level int) string {
-	switch level {
-	case 1:
-		return "h1"
-	case 2:
-		return "h2"
-	}
-	return "none"
-}
-
 // HexRGB parses "#rrggbb"; it panics on a malformed literal, so use it for
 // constants only.
 func HexRGB(s string) RGB {

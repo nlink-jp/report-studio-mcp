@@ -51,13 +51,16 @@ PAGE BREAKS  (automatic; nothing to write for most documents)
   written directly before a table, chart, mermaid diagram, image or code block (an italic
   note line between them, e.g. *出典: ...*, joins it). A chart, diagram or image that does not
   fit the rest of a page is shrunk to fit (not below 70%) or moves on with its caption.
-  Numbers in table cells (1,234,567  12.34%  ▲１２．３４％) are not broken across lines.
-  break_before (profile; front matter overrides): h2 starts every top-level ## heading on a
-  new page (formal does this), h1 every #, none never. A run of headings breaks once.
+  Numbers in table cells (1,234,567  12.34%  ▲１２．３４％  192.168.10.25) are not broken
+  across lines; identifiers mixing letters and digits (hashes, UUIDs, CVE-2024-12345) may wrap.
+  break_before (profile; front matter overrides): with h2 (formal's default) a top-level # or
+  ## heading after body text starts a new page; h1 only #; none never. A run of headings
+  breaks once, and never at the top of a page.
   Two directives, each an HTML comment alone on its own lines at the top level of the body:
     <!-- pagebreak -->       start a new page here (nothing at the top of a page)
     <!-- keep-with-next -->  keep the next block on the same page as the start of the one
-                             after it (the next block moves whole when it fits a page)
+                             after it (the next block moves whole when it fits a page);
+                             for a paragraph, heading, code, chart, diagram or image only
   Any other HTML comment is shown as text.
 
 CHARTS  (a fenced block whose info string is "chart"; its content is JSON)

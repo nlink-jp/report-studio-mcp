@@ -22,7 +22,7 @@ func (l *layouter) table(t *markdown.Table) {
 		return
 	}
 	p := l.tablePlan(t)
-	delete(l.plans, planKey{t, l.w})
+	delete(l.plans, planKey{b: t, w: l.w})
 	l.emit(p.warns)
 	widths, pad := p.widths, p.pad
 
@@ -96,7 +96,7 @@ type tablePlan struct {
 }
 
 func (l *layouter) tablePlan(t *markdown.Table) *tablePlan {
-	k := planKey{t, l.w}
+	k := planKey{b: t, w: l.w}
 	if v, ok := l.plans[k]; ok {
 		return v.(*tablePlan)
 	}

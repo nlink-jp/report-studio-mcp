@@ -82,9 +82,13 @@ func (w *writer) para(c ctx, p ppr, content string) {
 	if w.keep {
 		p.keepNext, p.keepLines = true, true
 	}
-	if !strings.HasPrefix(p.style, "Heading") {
+	// Headings of the body itself do not make a page's body (a chapter
+	// break follows them only after text); a heading inside a quote or list
+	// does, as its bar or marker does in the PDF.
+	if !strings.HasPrefix(p.style, "Heading") || !c.top {
 		w.hasBody = true
 	}
+	w.started = true
 	w.out.WriteString(`<w:p>` + p.xml() + content + `</w:p>`)
 	w.afterTable = false
 }
@@ -119,27 +123,19 @@ func (w *writer) blocks(bs []markdown.Block, c ctx) {
 			w.forceBreak()
 		}
 		for _, it := range g.Items {
-			w.keep = it.Keep && keepable(it.Block)
+			w.keep = it.Keep
 			w.block(it.Block, c)
 			w.keep = false
 		}
 	}
 }
 
-// keepable: the blocks a keep-with-next directive applies to, as in the PDF.
-// Tables, lists and quotes may run past a page; the directive is ignored on
-// them.
-func keepable(b markdown.Block) bool {
-	switch b.(type) {
-	case *markdown.Table, *markdown.List, *markdown.BlockQuote, *markdown.Alert:
-		return false
-	}
-	return true
-}
-
 // forceBreak starts the next paragraph on a new page. Several in a row are
-// one break.
+// one break, and at the top of a page it does nothing (as in the PDF).
 func (w *writer) forceBreak() {
+	if !w.started && w.topStart {
+		return
+	}
 	w.breakNext = true
 	w.hasBody = false
 }
@@ -262,6 +258,9 @@ func (w *writer) code(text string, c ctx) {
 	lines := strings.Split(src, "\n")
 	for i, ln := range lines {
 		p := w.base(c, "CodeBlock")
+		// The first two lines stay together: what a heading or caption is kept
+		// with (the PDF keeps the start of a code block the same way).
+		p.keepNext = i == 0 && len(lines) > 1
 		// The style's padding borders reach codePad left of the text; keep
 		// them inside the column.
 		p.ind, p.left = true, c.indent+tw(codePad+1)

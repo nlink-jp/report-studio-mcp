@@ -18,47 +18,51 @@ func (w *writer) table(t *markdown.Table, c ctx) {
 	if ncol == 0 {
 		return
 	}
-	if w.afterTable {
+	switch {
+	case w.breakNext:
+		// A table carries no paragraph properties of its own: the break is a
+		// paragraph before it, its mark kept tiny so it leaves no line on the
+		// new page. It also keeps two tables in a row apart.
+		w.out.WriteString(pageBreak)
+		w.breakNext, w.afterTable = false, false
+	case w.afterTable:
 		// Two tables in a row would merge into one in Word.
 		w.para(c, w.base(c, c.pstyle), "")
 	}
+	w.started, w.hasBody = true, true
 	cell := func(row [][]markdown.Inline, i int) []markdown.Inline {
 		if i < len(row) {
 			return row[i]
 		}
 		return nil
 	}
+	measure := w.o.Measure
+	if measure == nil {
+		measure = func(s string, _ bool) float64 { return float64(textWidth(s)) * th.TableSize * 0.75 }
+	}
 	units := make([]float64, ncol)
-	nums := make([]float64, ncol) // the widest number unit, in the same units
-	see := func(i int, s string) {
+	nums := make([]float64, ncol) // the widest number unit, in points
+	see := func(i int, s string, bold bool) {
 		units[i] = math.Max(units[i], float64(textWidth(s)))
 		for _, m := range placement.NumberTokens(s) {
-			nums[i] = math.Max(nums[i], float64(textWidth(placement.BoundUnit(s, m))))
+			nums[i] = math.Max(nums[i], measure(placement.BoundUnit(s, m), bold))
 		}
 	}
 	for i := range units {
-		see(i, plain(cell(t.Header, i)))
+		see(i, plain(cell(t.Header, i)), true)
 		for _, row := range t.Rows {
-			see(i, plain(cell(row, i)))
+			see(i, plain(cell(row, i)), false)
 		}
 	}
 	pad := th.TableSize * 0.45
 	total := tw(w.availW(c))
 	// As in the PDF, a column is never narrower than its widest number
-	// (RFP §2): a half-width character is taken as 0.55 em, a full-width one
-	// as two of those.
+	// (RFP §2), with a point to spare for the reader's own rounding.
 	least := make([]int, ncol)
 	for i := range least {
-		least[i] = max(tw(th.TableSize*3+2*pad), tw(nums[i]*th.TableSize*0.55+2*pad))
+		least[i] = max(tw(th.TableSize*3+2*pad), tw(nums[i]+2*pad+1))
 	}
 	widths := gridWidths(units, total, least)
-	if w.breakNext {
-		// A table carries no paragraph properties of its own: the break is a
-		// paragraph before it.
-		w.out.WriteString(`<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>`)
-		w.breakNext = false
-	}
-	w.hasBody = true
 
 	rule := hexRGB(th.Rule)
 	var b strings.Builder
@@ -89,6 +93,9 @@ func (w *writer) table(t *markdown.Table, c ctx) {
 			}
 			b.WriteString(`</w:tcPr>`)
 			p := newPPr("TableText")
+			// The header row stays with the first row, as in the PDF (and so
+			// with a heading or caption kept with the table).
+			p.keepNext = header
 			switch t.Align[i] {
 			case markdown.AlignLeft:
 				p.jc = "left"

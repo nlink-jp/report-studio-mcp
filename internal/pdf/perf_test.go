@@ -104,8 +104,11 @@ func TestKeepingIsLinear(t *testing.T) {
 			b.WriteString(table(20))
 			b.WriteString("\n")
 		}
-		b.WriteString(strings.Repeat("## 見出し\n\n<!-- keep-with-next -->\n\n", n*5))
-		b.WriteString(table(2000))
+		// A long run of headings (one group, measured until it passes a page)
+		// and then the largest table as the tail of a short group, so it is
+		// measured as a start and placed from the same plan.
+		b.WriteString(strings.Repeat("## 見出し\n\n", n*5) + "本文。\n\n")
+		b.WriteString("## 最後の表\n\n**表9：全件**\n\n" + table(2000))
 		doc := md.Parse([]byte(b.String()))
 		start := time.Now()
 		layout(t, doc, opts())

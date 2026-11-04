@@ -43,6 +43,12 @@ func TestDirectivesAreFlagsOnTheNextBlock(t *testing.T) {
 		t.Errorf("flags %+v", its)
 	}
 	runs := Runs(its)
+	// keep-with-next is ignored on tables, lists and quotes.
+	for _, src := range []string{"<!-- keep-with-next -->\n\n| a |\n|---|\n| 1 |\n", "<!-- keep-with-next -->\n\n- x\n", "<!-- keep-with-next -->\n\n> q\n"} {
+		if it := Items(markdown.Parse([]byte(src)).Children); it[0].Keep {
+			t.Errorf("%q: kept", src)
+		}
+	}
 	// a | b | c+d (kept, d its tail) | d
 	if len(runs) != 4 || runs[2].Tail == nil || !runs[2].Kept() || runs[3].Kept() {
 		t.Errorf("runs %+v", runs)
@@ -74,7 +80,6 @@ func TestNumberTokensAndTheirUnits(t *testing.T) {
 		{"(12.34%)。", "12.34%", "(12.34%)。"},
 		{"差 -1,234", "-1,234", " -1,234"},
 		{"あ−1,234", "−1,234", "−1,234"},
-		{"ID1,234,567", "1,234,567", "ID1,234,567"},
 		{"▲１２．３４％", "▲１２．３４％", "▲１２．３４％"},
 		{"¥1,234,567円", "¥1,234,567", "¥1,234,567"},
 	} {
@@ -89,5 +94,16 @@ func TestNumberTokensAndTheirUnits(t *testing.T) {
 	}
 	if ms := NumberTokens("1 と 2"); len(ms) != 0 {
 		t.Errorf("single digits: %v", ms)
+	}
+	// Identifiers are not numbers: they never widen a column.
+	for _, id := range []string{"ID1,234,567", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		"550e8400-e29b-41d4-a716-446655440000", "CVE-2024-12345", "x1,234", "v1.2.3"} {
+		if ms := NumberTokens("値 " + id + " 件"); len(ms) != 0 {
+			t.Errorf("%q: tokens %v", id, ms)
+		}
+	}
+	// An IP address is a number: kept whole.
+	if ms := NumberTokens("送信元 192.168.10.25"); len(ms) != 1 {
+		t.Errorf("IP address: %v", ms)
 	}
 }

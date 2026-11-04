@@ -464,8 +464,9 @@ func (c *converter) inline(n *inode) Inline {
 }
 
 // directive reports whether an HTML block is a layout directive: one
-// comment, alone, whose content is a directive name in any case and with any
-// inner whitespace. Anything around the comment makes it ordinary HTML.
+// comment, alone, whose content is a directive name in any case, with only
+// whitespace around it ("<!-- page break -->" is a note, not a directive).
+// Anything around the comment makes it ordinary HTML.
 func directive(raw string) (string, bool) {
 	s := strings.TrimSpace(raw)
 	if !strings.HasPrefix(s, "<!--") || !strings.HasSuffix(s, "-->") || len(s) < len("<!---->") {
@@ -475,7 +476,7 @@ func directive(raw string) (string, bool) {
 	if strings.Contains(inner, "-->") {
 		return "", false // more than one comment
 	}
-	switch k := strings.ToLower(strings.Join(strings.Fields(inner), "")); k {
+	switch k := strings.ToLower(strings.TrimSpace(inner)); k {
 	case DirectivePageBreak, DirectiveKeepWithNext:
 		return k, true
 	}

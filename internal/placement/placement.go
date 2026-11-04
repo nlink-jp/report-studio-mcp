@@ -44,7 +44,7 @@ func Items(bs []markdown.Block) []Item {
 			}
 			continue
 		}
-		out = append(out, Item{Block: b, BreakBefore: brk, Keep: keep})
+		out = append(out, Item{Block: b, BreakBefore: brk, Keep: keep && Keepable(b)})
 		brk, keep = false, false
 	}
 	for i := range out {
@@ -167,6 +167,17 @@ func IsNote(b markdown.Block) bool {
 		}
 	}
 	return em
+}
+
+// Keepable: the blocks a keep-with-next directive applies to. Tables,
+// lists, quotes and raw HTML may run past a page; the directive is ignored
+// on them, so the rules for a heading or caption before them still hold.
+func Keepable(b markdown.Block) bool {
+	switch b.(type) {
+	case *markdown.Table, *markdown.List, *markdown.BlockQuote, *markdown.Alert, *markdown.HTMLBlock:
+		return false
+	}
+	return true
 }
 
 // Captionable: what a caption can be paired with.

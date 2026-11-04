@@ -57,6 +57,11 @@ type Options struct {
 	Chart func(src string, line int, widthPt float64) (Picture, []string, error)
 	// Logo, when non-nil, goes on the cover.
 	Logo *Picture
+	// Measure is the width in points of text set in the table font at the
+	// table size (bold for the header row), so a column is never narrower
+	// than its widest number. Nil estimates it generously (0.75 em for a
+	// half-width character).
+	Measure func(text string, bold bool) float64
 }
 
 // stop carries a caller's error out of the walk through panic, so the many
@@ -145,6 +150,8 @@ type writer struct {
 	breakNext bool // the next paragraph starts a page
 	hasBody   bool // something other than headings since the last forced break
 	keep      bool // the block being written is kept with the next one
+	started   bool // the body has written something
+	topStart  bool // the body starts at the top of a page (nothing of the front on its page)
 
 	warns    []markdown.Warning
 	line     int
@@ -240,6 +247,9 @@ func Write(doc *markdown.Document, o Options) (data []byte, warns []markdown.War
 	// The body first: the table of contents lists what it found.
 	var body strings.Builder
 	w.out, w.cur = &body, &w.docRels
+	// The body starts on a page of its own unless the title block heads it
+	// (no cover): a break before anything is written is then a blank page.
+	w.topStart = o.Cover || doc.Meta["title"] == ""
 	w.blocks(doc.Children, ctx{top: true})
 	w.endContainer()
 	w.breakNext = false // a break at the very end has nothing to start

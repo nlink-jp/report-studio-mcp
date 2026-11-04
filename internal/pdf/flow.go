@@ -99,32 +99,58 @@ func after(ts textStyle, tight bool) float64 {
 
 // --- measuring ------------------------------------------------------------
 
-// planKey identifies a block's computation at a column width.
+// planKey identifies a block's computation at a column width and in a text
+// style: a quote sets its paragraphs in a muted colour, so a paragraph measured
+// as the start of a quote and placed in it must be computed in that style.
 type planKey struct {
-	b any
-	w float64
-}
-
-// paraLines are a paragraph's lines at the current width, computed once.
-func (l *layouter) paraLines(p *markdown.Paragraph, ts textStyle) ([]rich, []Line) {
-	k := planKey{p, l.w}
-	if v, ok := l.plans[k]; ok {
-		pl := v.(paraPlan)
-		return pl.rs, pl.lines
-	}
-	var ws []markdown.Warning
-	rs := flatten(l.th, ts, p.Children, func(code, msg string) {
-		ws = append(ws, markdown.Warning{Code: code, Message: msg})
-	})
-	lines := l.doc.Typeset(l.spans(rs), l.w)
-	l.plans[k] = paraPlan{rs, lines, ws}
-	return rs, lines
+	b  any
+	w  float64
+	ts textStyle
 }
 
 type paraPlan struct {
 	rs    []rich
 	lines []Line
 	warns []markdown.Warning
+}
+
+// paraPlan is a paragraph's rich text and lines at the current width and in
+// ts, computed once; take removes it for the placement, which uses it last.
+func (l *layouter) paraPlan(p *markdown.Paragraph, ts textStyle, take bool) paraPlan {
+	k := planKey{p, l.w, ts}
+	pl, ok := l.plans[k].(paraPlan)
+	if !ok {
+		var ws []markdown.Warning
+		rs := flatten(l.th, ts, p.Children, func(code, msg string) {
+			ws = append(ws, markdown.Warning{Code: code, Message: msg})
+		})
+		pl = paraPlan{rs, l.doc.Typeset(l.spans(rs), l.w), ws}
+		l.plans[k] = pl
+	}
+	if take {
+		delete(l.plans, k)
+	}
+	return pl
+}
+
+// headingPlan is paraPlan for a heading, in its heading style.
+func (l *layouter) headingPlan(h *markdown.Heading, take bool) paraPlan {
+	size := l.th.HeadingSizes[min(h.Level, 3)-1]
+	hs := textStyle{font: l.th.Heading, bold: l.th.Heading, size: size, color: l.th.Text}
+	k := planKey{h, l.w, hs}
+	pl, ok := l.plans[k].(paraPlan)
+	if !ok {
+		var ws []markdown.Warning
+		rs := flatten(l.th, hs, h.Children, func(code, msg string) {
+			ws = append(ws, markdown.Warning{Code: code, Message: msg})
+		})
+		pl = paraPlan{rs, l.doc.Typeset(l.spans(rs), l.w), ws}
+		l.plans[k] = pl
+	}
+	if take {
+		delete(l.plans, k)
+	}
+	return pl
 }
 
 // linesHeight is the height of lines set one under another with gap between.
@@ -165,15 +191,28 @@ func (l *layouter) full(b markdown.Block, ts textStyle, tight bool) float64 {
 			}
 			return h
 		}
-		_, lines := l.paraLines(v, ts)
+		lines := l.paraPlan(v, ts, false).lines
 		return linesHeight(lines, ts.size*l.th.LineGap) + after(ts, tight)
 	case *markdown.CodeBlock:
 		lang, _, _ := strings.Cut(strings.TrimSpace(v.Info), " ")
+		// A kept block is kept whole: a figure at its original size (it is
+		// not shrunk, or the start after it would no longer fit), code all of
+		// it. Measuring stops once past a fresh page: the group is not kept.
 		switch strings.ToLower(lang) {
-		case "chart", "mermaid":
-			return l.lead(b, ts, tight) + after(ts, tight) // a figure's least size is all of it
+		case "chart":
+			fig, scale, ok := l.chartPlan(v)
+			if !ok {
+				return 0
+			}
+			return fig.H*scale + after(ts, tight)
+		case "mermaid":
+			pic, err := l.o.Assets.Mermaid(v.Text, int(v.Line))
+			if err != nil {
+				return l.codeHeight(v.Text, -1, l.bottom()-l.top()) + after(ts, tight) // shown as its source
+			}
+			return l.pictureLead(pic, "", ts, false) + ts.size*0.75 + after(ts, tight)
 		}
-		return l.codeHeight(v.Text, -1) + after(ts, tight)
+		return l.codeHeight(v.Text, -1, l.bottom()-l.top()) + after(ts, tight)
 	case *markdown.ThematicBreak:
 		return ts.size + after(ts, tight)
 	}
@@ -190,7 +229,7 @@ func (l *layouter) lead(b markdown.Block, ts textStyle, tight bool) float64 {
 		if pics := onlyImages(v.Children); pics != nil {
 			return l.pictureLead(l.imagePicture(pics[0]), plain(pics[0].Alt), ts, true)
 		}
-		_, lines := l.paraLines(v, ts)
+		lines := l.paraPlan(v, ts, false).lines
 		return linesHeight(lines[:paraStart(len(lines))], ts.size*l.th.LineGap)
 	case *markdown.ThematicBreak:
 		return ts.size
@@ -211,7 +250,9 @@ func (l *layouter) lead(b markdown.Block, ts textStyle, tight bool) float64 {
 		w := l.w
 		l.w -= d
 		defer func() { l.w = w }()
-		return l.lead(v.Children[0], ts, false)
+		q := ts
+		q.color = l.th.TextMuted // as block() sets a quote's text
+		return l.lead(v.Children[0], q, false)
 	case *markdown.Alert:
 		label := l.lineHeight(ts.size) + ts.size*0.3
 		if len(v.Children) == 0 {
@@ -234,7 +275,7 @@ func (l *layouter) lead(b markdown.Block, ts textStyle, tight bool) float64 {
 		case "mermaid":
 			pic, err := l.o.Assets.Mermaid(v.Text, int(v.Line))
 			if err != nil {
-				return 0
+				return l.codeLead(v.Text) // shown as its source
 			}
 			return l.pictureLead(pic, "", ts, true)
 		}
@@ -251,32 +292,17 @@ func (l *layouter) lead(b markdown.Block, ts textStyle, tight bool) float64 {
 // headingHeight is the height of a heading's lines.
 func (l *layouter) headingHeight(h *markdown.Heading) float64 {
 	size := l.th.HeadingSizes[min(h.Level, 3)-1]
-	return linesHeight(l.headingLines(h), size*0.3)
-}
-
-func (l *layouter) headingLines(h *markdown.Heading) []Line {
-	k := planKey{h, l.w}
-	if v, ok := l.plans[k]; ok {
-		return v.(paraPlan).lines
-	}
-	size := l.th.HeadingSizes[min(h.Level, 3)-1]
-	hs := textStyle{font: l.th.Heading, bold: l.th.Heading, size: size, color: l.th.Text}
-	var ws []markdown.Warning
-	rs := flatten(l.th, hs, h.Children, func(code, msg string) {
-		ws = append(ws, markdown.Warning{Code: code, Message: msg})
-	})
-	lines := l.doc.Typeset(l.spans(rs), l.w)
-	l.plans[k] = paraPlan{rs, lines, ws}
-	return lines
+	return linesHeight(l.headingPlan(h, false).lines, size*0.3)
 }
 
 // codeLead is a code block's padding and its first two lines.
-func (l *layouter) codeLead(text string) float64 { return l.codeHeight(text, 2) }
+func (l *layouter) codeLead(text string) float64 { return l.codeHeight(text, 2, math.Inf(1)) }
 
 // codeHeight is the height of a code block's top padding and its first max
 // lines as code() sets them (all of them, and the bottom padding, when max is
-// negative).
-func (l *layouter) codeHeight(text string, max int) float64 {
+// negative). code() leaves a quarter of the size under every line it sets.
+// Measuring stops once the height passes limit.
+func (l *layouter) codeHeight(text string, max int, limit float64) float64 {
 	size := l.th.CodeSize
 	cs := l.style(Style{Font: l.th.Code, Size: size})
 	src := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
@@ -295,7 +321,9 @@ func (l *layouter) codeHeight(text string, max int) float64 {
 			h += vl.Ascent + vl.Descent + size*0.25
 			n++
 		}
-		h += size * 0.25
+		if h > limit {
+			return h
+		}
 	}
 	if max < 0 {
 		h += size * 0.8
@@ -386,7 +414,7 @@ func (l *layouter) chartPlan(v *markdown.CodeBlock) (*chart.Figure, float64, boo
 }
 
 func (l *layouter) chartFigure(v *markdown.CodeBlock) chartFig {
-	k := planKey{v, l.w}
+	k := planKey{b: v, w: l.w}
 	if c, ok := l.plans[k]; ok {
 		return c.(chartFig)
 	}

@@ -39,6 +39,19 @@ func docxOptions(doc *markdown.Document, th theme.Theme, cover, toc bool, logo *
 			Date: doc.Meta["date"], Classification: doc.Meta["classification"]},
 		Cover: cover,
 		TOC:   toc,
+		// Numbers are measured as the PDF measures them: Core Text, the table
+		// fonts at the table size.
+		Measure: func(text string, bold bool) float64 {
+			font := th.Body
+			if bold {
+				font = th.BodyBold
+			}
+			id, err := ctdoc.Add(pdf.Style{Font: font, Size: th.TableSize})
+			if err != nil {
+				return 0 // the PDF layout has already stopped on a missing font
+			}
+			return ctdoc.Measure(text, id)
+		},
 		Family: func(ps string) string {
 			if f := pdf.FamilyName(ps); f != "" {
 				return f

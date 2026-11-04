@@ -506,12 +506,130 @@ func TestReporterSample(t *testing.T) {
 }
 
 func TestKeepWithNextIsIgnoredOnTablesAndLists(t *testing.T) {
-	rows := "| a |\n|---|\n" + strings.Repeat("| 行 |\n", 10)
+	// The directive on a table, list or quote changes nothing: the heading or
+	// caption before it is still kept with its start, and nothing is warned.
+	list := "- 項目一\n- 項目二\n- 項目三\n"
 	sweep(t, 60, func(n int) {
-		with, _ := layout(t, parse(t, filler(n)+"<!-- keep-with-next -->\n\n"+rows+"\n後。\n"), opts())
-		without, _ := layout(t, parse(t, filler(n)+rows+"\n後。\n"), opts())
-		if len(with.Pages) != len(without.Pages) || pageOf(with, "行") != pageOf(without, "行") {
-			t.Errorf("filler %d: the directive moved a table", n)
+		for _, c := range []struct{ lead, body, first string }{
+			{"## 集計\n\n", wideTable, "種別あ"},
+			{"**表1：数値**\n\n", wideTable, "種別あ"},
+			{"## 一覧\n\n", list, "項目一"},
+		} {
+			with, _ := layout(t, parse(t, filler(n)+c.lead+"<!-- keep-with-next -->\n\n"+c.body+"\n後。\n"), opts())
+			without, _ := layout(t, parse(t, filler(n)+c.lead+c.body+"\n後。\n"), opts())
+			if pageOf(with, c.first) != pageOf(without, c.first) || len(with.Pages) != len(without.Pages) {
+				t.Errorf("filler %d, %q: the directive moved the %s", n, c.lead, c.first)
+			}
+			if h, b := pageOf(with, strings.Trim(c.lead, "#*\n ")), pageOf(with, c.first); h != b {
+				t.Errorf("filler %d, %q: separated from its start (pages %d and %d)", n, c.lead, h+1, b+1)
+			}
+			for _, w := range with.Warnings {
+				if w.Code == "caption_separated" {
+					t.Errorf("filler %d: %s", n, w.Message)
+				}
+			}
 		}
 	})
+}
+
+func TestQuoteAfterAHeadingKeepsItsColour(t *testing.T) {
+	r, doc := layout(t, parse(t, "## 見出し\n\n> 引用の本文。\n"), opts())
+	for _, p := range r.Pages {
+		for _, op := range p.Ops {
+			if tx, ok := op.(TextOp); ok && strings.Contains(opText(tx), "引用の本文") {
+				st := doc.styles[tx.Spans[0].Style]
+				if (RGB{st.R, st.G, st.B}) != opts().Theme.TextMuted {
+					t.Errorf("quote text in %v, want the muted colour", RGB{st.R, st.G, st.B})
+				}
+				return
+			}
+		}
+	}
+	t.Fatal("quote text not found")
+}
+
+func TestKeptFiguresKeepTheirNextBlock(t *testing.T) {
+	for name, fig := range map[string]string{"chart": stackedChart, "mermaid": "```mermaid\nflowchart TB\n  A --> B\n```\n"} {
+		sweep(t, 60, func(n int) {
+			src := filler(n) + "<!-- keep-with-next -->\n\n" + fig + "\n後に続く段落。\n"
+			r, _ := layout(t, parse(t, src), opts())
+			figPage := -1
+			for pi, p := range r.Pages {
+				for _, op := range p.Ops {
+					switch op.(type) {
+					case FigOp, PicOp:
+						figPage = pi
+					}
+				}
+			}
+			if p := pageOf(r, "後に続く段落"); p != figPage {
+				t.Errorf("%s, filler %d: figure on page %d, the next paragraph on page %d", name, n, figPage+1, p+1)
+			}
+		})
+	}
+}
+
+func TestKeptCodeNearAPageIsMeasuredExactly(t *testing.T) {
+	// A kept code block that just fits a page with the paragraph after it is
+	// kept: its height is measured as code() sets it, not more.
+	o := opts()
+	for lines := 30; lines <= 60; lines++ {
+		code := "```sh\n" + strings.Repeat("echo line\n", lines) + "```\n"
+		r, _ := layout(t, parse(t, "本文。\n\n<!-- keep-with-next -->\n\n"+code+"\n後。\n"), o)
+		alone, _ := layout(t, parse(t, code+"\n後。\n"), o)
+		// When code and the paragraph fit one page on their own, keeping must
+		// put them together.
+		if len(alone.Pages) == 1 && pageOf(r, "echo line") != pageOf(r, "後。") {
+			t.Errorf("%d lines: code and the paragraph fit a page but were separated", lines)
+		}
+	}
+}
+
+func TestFallbackDiagramIsKeptByItsSource(t *testing.T) {
+	o := opts()
+	o.Assets = fakeAssets{mermaidErr: fmt.Errorf("unsupported")}
+	src := "```mermaid\njourney\n  title x\n  section y\n```\n"
+	sweep(t, 60, func(n int) {
+		r, _ := layout(t, parse(t, filler(n)+"## 図\n\n"+src), o)
+		if h, b := pageOf(r, "図"), pageOf(r, "journey"); h != b {
+			t.Errorf("filler %d: heading on page %d, the source on page %d", n, h+1, b+1)
+		}
+	})
+}
+
+func TestIdentifiersDoNotWidenColumns(t *testing.T) {
+	hash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	src := "| sha256 | sha256 (2) | 件数 | 金額 |\n|---|---|---:|---:|\n| " + hash + " | " + hash + " | 1,234 | 9,876,543 |\n"
+	r, _ := layout(t, parse(t, src), opts())
+	for _, num := range []string{"1,234", "9,876,543"} {
+		if pageOf(r, num) < 0 {
+			t.Errorf("%s is broken", num)
+		}
+	}
+	for _, w := range r.Warnings {
+		if w.Code == "cell_token_split" {
+			t.Errorf("warned: %s", w.Message)
+		}
+	}
+}
+
+// A plan is per text style: the same paragraph computed in two styles is two
+// plans (the quote colour above is also measured in its own style; either
+// would keep it right, so each is pinned on its own).
+func TestPlansArePerTextStyle(t *testing.T) {
+	doc, err := NewDoc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(doc.Close)
+	o := opts()
+	l := &layouter{doc: doc, o: o, th: o.Theme, plans: map[planKey]any{}, w: 400}
+	p := mdPara("同じ段落。")
+	a := textStyle{font: o.Theme.Body, bold: o.Theme.BodyBold, size: 10.5, color: o.Theme.Text}
+	b := a
+	b.color = o.Theme.TextMuted
+	pa, pb := l.paraPlan(p, a, false), l.paraPlan(p, b, false)
+	if pa.rs[0].style == pb.rs[0].style {
+		t.Error("two styles share one plan")
+	}
 }

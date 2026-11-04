@@ -23,16 +23,46 @@ const (
 )
 
 // NumberTokens finds the numbers in s worth keeping whole (two characters or
-// more), as byte ranges.
+// more), as byte ranges. Digits that are part of an ASCII word holding a
+// letter (a hash, a UUID, CVE-2024-1234, ID1234) are an identifier, not a
+// number: they are left out, so an identifier never widens a column.
 func NumberTokens(s string) [][]int {
 	var out [][]int
 	for _, m := range numberRE.FindAllStringIndex(s, -1) {
-		if utf8.RuneCountInString(s[m[0]:m[1]]) >= 2 {
+		if utf8.RuneCountInString(s[m[0]:m[1]]) >= 2 && !inIdentifier(s, m) {
 			out = append(out, m)
 		}
 	}
 	return out
 }
+
+// inIdentifier reports whether the match sits in a run of ASCII word
+// characters and joiners (- . , _ + %) that holds a letter.
+func inIdentifier(s string, m []int) bool {
+	start, end := m[0], m[1]
+	for start > 0 {
+		r, n := utf8.DecodeLastRuneInString(s[:start])
+		if !isIDRune(r) {
+			break
+		}
+		start -= n
+	}
+	for end < len(s) {
+		r, n := utf8.DecodeRuneInString(s[end:])
+		if !isIDRune(r) {
+			break
+		}
+		end += n
+	}
+	for _, r := range s[start:end] {
+		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+func isIDRune(r rune) bool { return isASCIIWord(r) || strings.ContainsRune("-.,+%", r) }
 
 // BoundUnit widens the number at m to what a line breaker will not separate
 // from it.

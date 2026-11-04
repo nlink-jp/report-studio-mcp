@@ -595,11 +595,9 @@ func (l *layouter) block(b markdown.Block, ts textStyle, tight bool) {
 			}
 			return
 		}
-		rs, lines := l.paraLines(v, ts)
-		pl := l.plans[planKey{v, l.w}].(paraPlan)
-		delete(l.plans, planKey{v, l.w})
+		pl := l.paraPlan(v, ts, true)
 		l.emit(pl.warns)
-		l.place(rs, lines, ts.size*l.th.LineGap, 0, splitParagraph)
+		l.place(pl.rs, pl.lines, ts.size*l.th.LineGap, 0, splitParagraph)
 		l.space(after)
 	case *markdown.Heading:
 		// Headings are kept with what follows by flow; here they only stay
@@ -609,9 +607,8 @@ func (l *layouter) block(b markdown.Block, ts textStyle, tight bool) {
 		lvl := min(v.Level, 3)
 		size := l.th.HeadingSizes[lvl-1]
 		l.space(size * 0.9)
-		lines := l.headingLines(v)
-		pl := l.plans[planKey{v, l.w}].(paraPlan)
-		delete(l.plans, planKey{v, l.w})
+		pl := l.headingPlan(v, true)
+		lines := pl.lines
 		l.emit(pl.warns)
 		l.ensure(linesHeight(lines, size*0.3))
 		dest := "h" + strconv.Itoa(len(l.heads)+1)
@@ -771,7 +768,7 @@ func (l *layouter) code(text string) {
 func (l *layouter) chart(v *markdown.CodeBlock) {
 	l.flushMarker()
 	c := l.chartFigure(v)
-	delete(l.plans, planKey{v, l.w})
+	delete(l.plans, planKey{b: v, w: l.w})
 	fig, n, err := c.fig, c.points, c.err
 	if err != nil {
 		line := int(v.Line)
