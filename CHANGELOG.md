@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-04
+
+### Added
+
+- **A bundled skill, `report-manuscript`** (#1, organization ADR-027; RFP
+  Discussion Log 22). It covers:
+  - choosing the profile and the front matter;
+  - the caption form the typesetter keeps with its table or figure;
+  - grouping short chapters under `formal`;
+  - wide tables, charts and diagrams;
+  - the two directives as escape hatches;
+  - what to change in the manuscript for each warning;
+  - the gather → manuscript → `render` → revise run.
+
+  It builds on `get_usage` instead of restating it.
+- **The skill ships on every release** as `report-manuscript-vX.Y.Z.zip`,
+  with the skill folder at the zip's root. `make package` builds it, and
+  `make verify-release` refuses a release whose skill zip is missing, stale, or
+  built from a dirty tree. `make install-skill` unpacks it. The README says how
+  gem-agent, lagent, the app and Claude Code install it.
+- `make test` runs the organization's skill validator, and
+  `internal/tools/skill_test.go` holds the skill to the server:
+  - every backticked snake_case identifier or `key:` must be a tool, schema
+    property, raised code, json/toml tag or front-matter key the parser
+    accepts;
+  - every directive must parse as one;
+  - the example manuscripts must parse without a warning, with their table
+    paired with its caption.
+
+### Fixed
+
+- **`get_usage` now names `workspace_failed`.** render returns it when a file
+  under the work directory cannot be read or written, or the typesetter fails.
+  The check that `get_usage` names every code missed it, because it read only
+  some of the forms that raise a code. It now reads them all.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added
