@@ -59,7 +59,8 @@ and callouts, ECMA-376 5th edition Transitional for .docx — sources and dates 
   description is recorded as the source and tests are derived from it.
 - Front matter: a single level of `key: value` lines between leading `---` lines (no nesting, no
   arrays). Accepted keys: title, subtitle, author, date, classification (e.g. "Confidential"),
-  `profile`, cover page and table of contents on/off. All optional; an unknown key is a warning.
+  `profile`, cover page and table of contents on/off, the page break before chapters (`break_before`,
+  v0.2.0). All optional; an unknown key is a warning.
   Without front matter, the first heading is the title.
 
 What a manuscript can contain:
@@ -87,10 +88,61 @@ Everything else is a warning and the document is still written:
 - A mermaid diagram that cannot be drawn (`SyntaxError`, `UnsupportedType`, `UnsupportedConstruct`,
   `LayoutFault`): as mermaid-render's contract says, its source is shown as a code block instead. A
   diagram that would exceed the pixel limit at print scale is drawn at a lower scale.
-- Raw HTML is shown as text; headings deeper than level 3 take the level-3 look.
+- Raw HTML is shown as text, except an HTML comment holding only one of the two directives below, which
+  is not shown and acts as the directive (v0.2.0, "Page breaks and placement" below). Headings deeper
+  than level 3 take the level-3 look.
 - A wide table first shrinks its type down to a floor, then wraps inside cells. Unbreakable long lines
   (code, URLs) are force-wrapped.
 - Control characters that XML (.docx) cannot carry are removed.
+
+**Page breaks and placement (v0.2.0)**
+
+Rules that work without changing the manuscript come first; manuscript directives are an escape hatch
+"for when the intent must be said", and there are only two. The PDF decides its own page breaks; in the
+.docx Word decides them, so paragraphs carry the matching properties (`keepNext`, `keepLines`,
+`pageBreakBefore`).
+
+- **Captions**: a paragraph made only of bold text, or one starting `表N：`, `図N：`, `Table N:` or
+  `Figure N:` (N a number; full- and half-width colons and minor separator variants accepted), is a
+  caption. It is paired with what follows only when that is a table, chart, diagram, image or code block.
+  A paragraph of only italics right after the caption (source, note) joins the pair. Captions placed below
+  their body are not handled (an image's description stays under the image as before).
+- **Keep with next**: a heading (levels 1-3) or a caption group is placed on the same page as the start of
+  the next block. The start is: two lines of a paragraph or list; a table's header row and first row; two
+  lines of code; the whole chart, diagram or image (at its size after the shrinking below); for a quote or
+  callout, the start of its first block. If they do not fit, they move to the next page together.
+  Consecutive headings form one group. A group that would not fit on a fresh page either is placed in
+  order without this rule.
+- **Headings are not split**: however many lines a heading wraps to, no page break falls inside it.
+- **Shrinking charts and figures**: when a chart, mermaid diagram or image does not fit what is left of the
+  page, it is shrunk to fit in place if the shrunk size is at least 70% of the original and at least eight
+  body lines are left; otherwise it moves to the next page (with its caption group).
+- **Widows and orphans**: a paragraph of three or more lines never leaves only its first line at the foot of
+  a page nor carries only its last line to the next. Not applied to code or table cells.
+- **Numbers are not broken**: a number in a table cell (digits with `,` and `.`, including a leading sign or
+  currency symbol and a trailing `%`) does not wrap mid-way. A column's minimum width is at least the width
+  of the longest number in it. When the minimum widths together exceed the text width, the table shrinks
+  and wraps as before and the cells whose numbers broke are warned about. Alphanumeric IDs are not covered
+  (breaking at a hyphen does not cause a misread digit; landscape pages are meant to handle them).
+- **Page break before chapters**: the profile's `break_before` (`h1` / `h2` / `none`) always breaks the page
+  before headings of that level and above. `formal` defaults to `h2`; `standard` and `compact` to `none`.
+  The front matter's `break_before` overrides it per manuscript. No break before a heading already at the
+  top of a page (no blank pages).
+- **Manuscript directives**: a one-line HTML comment `<!-- pagebreak -->` (break the page here) and
+  `<!-- keep-with-next -->` (keep the next block on the same page as the start of the block after it).
+  Case and inner whitespace may vary. Viewers that do not know the directives show nothing, as for any
+  comment.
+- **Warnings** (output is still written; with line numbers):
+  - `caption_separated`: a caption and its body ended up on different pages (the group does not fit a page).
+  - `cell_token_split`: a number in a table cell broke across lines; with the column header and the start of
+    the value.
+  - `mermaid_scaled`: a diagram was shrunk so its text is below 60% of the body size; with the scale.
+  - `short_page`: the page before a chapter break holds five body lines or fewer of the previous chapter's
+    end; with the number of lines.
+
+Out of scope (later versions; Discussion Log 14): landscape pages, a distinct look for level-4 headings,
+explicit caption syntax with automatic numbering, captions below their body, switching a mermaid diagram's
+direction automatically, manual line breaks in the cover title.
 
 **Limits**
 
@@ -132,7 +184,8 @@ shown by `get_usage`. Unknown keys are errors (strict decoding).
 
 A profile sets: paper (A4 / Letter) and margins; body, heading and code fonts (any installed font);
 font sizes and line spacing; colours (headings, emphasis, callouts, chart palette); header and footer
-(title, classification, page number); cover page and table of contents; a logo image for the cover.
+(title, classification, page number); cover page and table of contents; a logo image for the cover; the
+page break before chapters (`break_before`, v0.2.0).
 Text inside mermaid diagrams stays Hiragino for now (mermaid-render loads fonts through a different
 mechanism from Core Text, and some faces cannot be read by it).
 
@@ -144,7 +197,7 @@ Built-in profiles (compiled in, not editable):
 | Name | Use | Look |
 |---|---|---|
 | `standard` (default) | Everyday investigation reports | A4, Hiragino Sans, no cover or TOC, page number in the footer |
-| `formal` | Formal internal documents | Cover and TOC, Hiragino Mincho body, classification in the header |
+| `formal` | Formal internal documents | Cover and TOC, Hiragino Mincho body, classification in the header, page break before level-2 headings (v0.2.0) |
 | `compact` | Drafts and notes | Narrow margins and smaller type to keep the page count down |
 
 The model can only choose a profile by name; what a profile contains is decided by the operator's
@@ -174,6 +227,7 @@ configuration file.
 | Only mistakes are errors | An over-fixed format turns every out-of-range construct into a rejection and a rewrite. A diagram that cannot be drawn is replaced by its source. Matters of appearance are left to people |
 | Reads and writes go through `os.Root` | A spawned MCP server is not confined by any runtime (org ADR-021 §7), and the work directory is writable from inside the sandbox. Checking a literal path and then opening it is a TOCTOU. pathguard is a floor of places never to touch, not confinement, so it is layered on top of `os.Root` |
 | Appearance switched by profile | Three built-ins plus `extends` overrides. Reading Word templates is complex and not adopted |
+| Page breaks: automatic rules first, only two manuscript directives (v0.2.0) | Real use separated captions from their bodies and broke numbers mid-way (Discussion Log 14). Rules that need no manuscript change prevent most of it; directives are limited to HTML comments, which ordinary Markdown viewers do not show, so manuscripts stay compatible |
 | Where writing guidance lives | How to use the tool lives in `get_usage`. How to write a good report, and the workflow, live in a separate support skill (skills-series, its own RFP). Parameters and error tables are not written into the skill (a source of drift) |
 
 **Complements**: gem-agent and lagent (callers); mermaid-render (diagrams); pathguard (the floor);
@@ -240,6 +294,22 @@ Write and commit the pass criteria first, then measure. A failure sends us back 
   the nlink-web-site catalog and the repository About, knowledge feedback, check-org.
 - Registering with gem-agent and lagent changes the operator's machine, so the steps are announced
   beforehand and the registration is removed after verification (org ADR-023).
+
+### Phase 4: v0.2.0 (page breaks and placement)
+
+A revision after a real user's report (Discussion Log 14), implementing "Page breaks and placement" above.
+
+- The reporter's synthetic sample becomes test data. Across every dummy line count, the reported problems
+  (separated captions, numbers broken mid-way, a wide diagram shrunk) are shown fixed, or warned about
+  where they cannot be.
+- Per rule, a test checks positions on the page (heading and the next block's start on one page, no split
+  heading, no widow or orphan, no broken number, shrink of at least 70%, breaks where directed).
+- In the .docx, the XML is checked for `keepNext` and `pageBreakBefore` on caption groups, directives and
+  chapter breaks (Word's pagination itself cannot be checked; Discussion Log 13).
+- Time: measuring the next block's start stays proportional to the page count (measured on a manuscript at
+  every limit).
+- Independent verification when the design is settled and before release; README (en/ja), `get_usage` and
+  CHANGELOG updated.
 
 ### Open issues (handled in other projects; org ADR-025)
 
@@ -370,3 +440,26 @@ No external platform is depended on. Product-side constraints:
     check is not performed. The README (en/ja) has a "Limitations" section stating that the .docx has not
     been checked in Word and what was checked instead (part-by-part checks against ECMA-376, display in
     Pages 15.4 and LibreOffice 26.8).
+14. **A real user's report and the scope of v0.2.0 (2026-11-04).** A user who set a 42-page Japanese report
+    with `formal` sent requests about page breaks and placement (the manuscript is confidential; only its
+    shape and a synthetic sample were shared). Ten problems: captions separated from their bodies, a
+    heading split across pages, headings stranded at a page foot, numbers in table cells wrapped mid-way,
+    IDs in wide tables wrapped, charts moved to the next page leaving space, a wide mermaid diagram shrunk,
+    the cover title wrapped, pages more than half empty.
+    - **Reproduction (measured on v0.1.0)**: the synthetic sample was set 26 ways, with 20 to 45 dummy
+      lines. The table caption was separated in 4 of them and the chart caption in 15. Numbers broke as
+      `1,234,5`/`67` and `12.34`/`%`. The wide diagram's text came out at about 4 pt by eye. The split and
+      stranded headings were not reproduced, but the code was confirmed to reserve a fixed "one heading line
+      plus two body lines" for a heading.
+    - **Causes**: a bold paragraph is just a paragraph, with nothing keeping it with what follows. The
+      heading reservation does not look at the next block's actual start. A table column's minimum width
+      depends only on the type size, not on the numbers in it, so Core Text finds no break opportunity and
+      breaks inside the characters. Charts and figures either fit whole or go to the next page.
+    - **The operator's decisions (all as recommended)**: the recommended set of automatic rules (column
+      widths that keep numbers whole, keep-with-next and unsplit headings, shrinking charts and figures,
+      widows and orphans, the warnings, a chapter break in `formal`). Only two manuscript directives,
+      `pagebreak` and `keep-with-next`. Landscape pages, a distinct level-4 look, and explicit captions with
+      numbering are left for later versions.
+    - **Not adopted**: switching a mermaid diagram's direction (LR to TB) automatically would rearrange the
+      author's diagram, so only the warning (`mermaid_scaled`) is given. The `short_page` warning was added
+      because the chapter break needs it.
