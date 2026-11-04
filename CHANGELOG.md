@@ -17,12 +17,15 @@ All notable changes to this project are documented here. The format follows
     alone on a page;
   - charts, diagrams and images that do not fit the rest of a page are shrunk
     to fit (not below 70%) or move on with their caption;
-  - numbers in table cells are not broken across lines;
+  - numbers in table cells (`1,234,567`, `12.34%`, `▲１２．３４％`, IP
+    addresses) are not broken across lines; identifiers mixing letters and
+    digits (hashes, UUIDs, CVE IDs) are not treated as numbers;
   - `break_before` (`h1`, `h2`, `none`) in profiles and the front matter;
   - the directives `<!-- pagebreak -->` and `<!-- keep-with-next -->`;
   - warnings `cell_token_split`, `caption_separated` and `mermaid_scaled`;
   - the .docx carries the same as keep-with-next, page-break-before and
-    widow-control properties and number-aware column widths.
+    widow-control properties, and its number columns are as wide as Core Text
+    measures the numbers.
 
 ### Changed
 

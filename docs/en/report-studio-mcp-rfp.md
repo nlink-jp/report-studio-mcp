@@ -133,8 +133,10 @@ from the policy that appearance never decides pass or fail).
 - **Numbers are not broken**: a number in a table cell (digits with `,` and `.`, including a leading sign or
   currency symbol and a trailing `%`) does not wrap mid-way. A column's minimum width is at least the width
   of the longest number in it. When the minimum widths together exceed the text width, the table shrinks
-  and wraps as before, and one warning per table says numbers broke. Alphanumeric IDs are not covered
-  (breaking at a hyphen does not cause a misread digit; landscape pages are meant to handle them). Whether
+  and wraps as before, and one warning per table says numbers broke. Digits inside an ASCII word holding a
+  letter (hashes, UUIDs, `CVE-2024-12345`) are identifiers: not covered and not counted toward column widths
+  (breaking them does not cause a misread digit; landscape pages are meant to handle them). An IP address
+  is a number and stays whole. Whether
   Core Text has break opportunities inside numbers with full-width digits, `−` (U+2212) or signs such as
   `▲` is measured before implementing.
 - **Page break before chapters**: the profile's `break_before` (`h1` / `h2` / `none`) breaks the page before
@@ -146,24 +148,27 @@ from the policy that appearance never decides pass or fail).
   manuscript. A bad value is the existing `invalid_front_matter_value` in front matter, and a
   configuration error in the configuration file.
 - **Manuscript directives**: a block at the outermost level of the body made only of an HTML comment whose
-  content is `pagebreak` or `keep-with-next` (case and inner whitespace may vary; anything after `-->` makes
-  it not a directive). A directive raises no `raw_html` warning and is not shown. A directive does not count
+  content is `pagebreak` or `keep-with-next` (case and the whitespace around it may vary; whitespace inside the
+  name may not, so `<!-- page break -->` is a note; anything after `-->` makes it not a directive). A directive raises no `raw_html` warning and is not shown. A directive does not count
   as a block (it is transparent to caption groups and starts). Directives inside containers, and comments
   with any other content, are shown as text as before.
   - `<!-- pagebreak -->`: break the page here. Nothing happens at the top of a page (several in a row make
     no blank pages).
   - `<!-- keep-with-next -->`: keep the next block on the same page as the start of the block after it;
     when the next block fits a page, it moves whole. It applies to paragraphs, headings, code, charts,
-    diagrams, images and rules; not to tables, lists or quotes (they may exceed a page; the directive is
-    ignored there).
+    diagrams, images and rules; not to tables, lists, quotes or raw HTML (they may exceed a page; the
+    directive is ignored there, and the rules for a heading or caption before them still hold).
 - **.docx**: Word decides the page breaks, so paragraphs carry the matching properties. Caption groups get
   `keepNext`; chapter breaks and `pagebreak` set `pageBreakBefore` on the next paragraph (no paragraph made
   only for a break; not on the first heading right after the cover and TOC, nor on the second and later
-  headings of a run; a table, which has no paragraph properties, gets a break-only paragraph before it).
+  headings of a run; a `pagebreak` before anything is written does nothing when the body starts at the top
+  of a page; a table, which has no paragraph properties, gets a small break-only paragraph before it). A
+  table's header row and a code block's first line always carry `keepNext` (keeping the same start as the
+  PDF).
   Set per paragraph, not in the heading styles. `widowControl` is written in the Normal style (it is on by
-  default when absent, but is stated). Table column widths take the longest number as their minimum, as in the PDF. What these
-  properties mean is read in the relevant clauses of ECMA-376 5th edition Part 1 before implementing, and
-  the clause numbers are recorded. Word cannot be checked (Discussion Log 13), so a person checks the page
+  default when absent, but is stated). Table column widths take the longest number as their minimum, as in the PDF (measured with
+  Core Text in the table fonts). What these properties mean is read in the specification's definitions
+  before implementing (source: Discussion Log 17). Word cannot be checked (Discussion Log 13), so a person checks the page
   breaks in Pages and LibreOffice.
 - **Warnings** (output is still written; with line numbers):
   - `caption_separated`: a caption and its body ended up on different pages (the group does not fit a page).
@@ -577,3 +582,25 @@ No external platform is depended on. Product-side constraints:
     page; no blank page between the contents and chapter 1 or anywhere else; captions on the same page as
     their table or chart; a new page after `pagebreak`; numbers in tables not broken mid-way. The answer
     did not break down per item or per application. Word was not checked (Discussion Log 13).
+
+19. **Pre-release independent review (2026-11-04).** Two verifiers without the conversation's history
+    reviewed the PDF typesetting, and the .docx, parser, configuration and documents. Every finding was
+    adopted and fixed:
+    - `keep-with-next` on a table, list or quote dropped the heading or caption group before it, warned
+      `caption_separated` every time and moved the chapter break forward (both verifiers). → The shared
+      reading never marks those blocks.
+    - A quote's first paragraph right after a heading was drawn in the body colour (the plan key had no text
+      style).
+    - The block after a kept chart or diagram went to the next page (it was measured as if shrunk). → A kept
+      figure is measured at its original size.
+    - Digit runs inside a hash were read as numbers, the column minimum became the whole hash, and the real
+      numbers broke instead (worse than v0.1.1). → Digits in an ASCII word holding a letter are an identifier.
+    - The .docx's estimate for number columns (0.55 em a half-width character) was below the measured 0.56-
+      0.71 em. → Measure with Core Text in the table fonts.
+    - A `pagebreak` right after the cover or contents could make a blank page in the .docx; the break before a
+      table could leave an empty line; header rows and first code lines lacked `keepNext`; headings in
+      quotes did not count as body; `<!-- page break -->` was a directive; code height was overestimated and
+      a diagram shown as its source measured 0; wording in the documents; two tests that did not check what
+      their names said, and no test that the .docx gets the settings.
+    - **Accepted remainder**: a table's header row is typeset three times and its first row twice (not
+      quadratic).

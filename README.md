@@ -52,14 +52,20 @@ Most documents need nothing written for this:
 - A chart, diagram or image that does not fit the rest of a page is shrunk to
   fit (not below 70%) or moves on with its caption.
 - **Numbers in table cells are not broken across lines** (`1,234,567`,
-  `12.34%`, `▲１２．３４％`). When a table is too wide for that, the warning
+  `12.34%`, `▲１２．３４％`, `192.168.10.25`). Identifiers mixing letters and
+  digits (hashes, UUIDs, `CVE-2024-12345`) are not numbers and may wrap. When
+  a table is too wide to keep its numbers whole, the warning
   `cell_token_split` names the columns.
-- `break_before` starts chapters on a new page: `formal` puts every top-level
-  `##` heading on a new page; `h1`, `h2` or `none` can be set in a profile or
-  in the front matter.
+- `break_before` starts chapters on a new page: with `h2` (the `formal`
+  default) every top-level `#` or `##` heading that follows body text starts a
+  new page (a run of headings breaks once, never at the top of a page); `h1`
+  does this for `#` only, `none` never. Set it in a profile or in the front
+  matter.
 
 Two directives cover the rest, each an HTML comment alone on its own lines at
-the top level of the body (other Markdown viewers show nothing):
+the top level of the body (other Markdown viewers show nothing).
+`keep-with-next` applies to a paragraph, heading, code block, chart, diagram
+or image; on a table, list or quote it is ignored.
 
 ```markdown
 <!-- pagebreak -->
@@ -128,7 +134,8 @@ directory the caller can read back (organization ADR-021).
   numbers; Word fills them in when the field is updated.
 - In the .docx, the page-break rules are paragraph properties (keep with next,
   page break before, widow control) that the reader applies; how Word
-  paginates is not verified. Column widths keep half-width numbers whole, but
+  paginates is not verified; Pages and LibreOffice were checked by a person.
+  Number columns are as wide as Core Text measures their numbers, but
   full-width digits (`１２３`) may still break in a narrow column there.
 - Text runs left to right; right-to-left paragraphs are kept but laid out in a
   left-to-right line.
