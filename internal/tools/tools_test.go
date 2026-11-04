@@ -24,7 +24,18 @@ func TestGetUsageReturnsTheReference(t *testing.T) {
 // Every warning and error code the server can produce is in get_usage: a
 // model can only act on what the reference names.
 func TestUsageNamesEveryCode(t *testing.T) {
-	re := regexp.MustCompile(`(?:warn\(|Code:\s*|toolerr\.New\(|toolerr\.Newf\(|c\.warn\([^,]+,\s*)"([a-z]+(?:_[a-z]+)+)"`)
+	for code := range serverCodes(t) {
+		if !strings.Contains(usage, code) {
+			t.Errorf("get_usage does not name %s", code)
+		}
+	}
+}
+
+// serverCodes reads every warning and error code the server's own source can
+// produce: the codes as written where they are raised, not as copied.
+func serverCodes(t *testing.T) map[string]bool {
+	t.Helper()
+	re := regexp.MustCompile(`(?:warn\(|collect\(|stopErr\(|Code:\s*|Code[A-Za-z]+\s*=\s*|toolerr\.New\(|toolerr\.Newf\(|c\.warn\([^,]+,\s*|\.fail\([^,]+,\s*)"([a-z]+(?:_[a-z]+)+)"`)
 	var files []string
 	err := filepath.WalkDir("..", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go") {
@@ -48,9 +59,5 @@ func TestUsageNamesEveryCode(t *testing.T) {
 	if len(seen) < 20 {
 		t.Fatalf("found only %d codes: %v", len(seen), seen)
 	}
-	for code := range seen {
-		if !strings.Contains(usage, code) {
-			t.Errorf("get_usage does not name %s", code)
-		}
-	}
+	return seen
 }
