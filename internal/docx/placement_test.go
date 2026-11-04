@@ -185,11 +185,27 @@ func TestBreakBeforeATableIsATinyParagraph(t *testing.T) {
 }
 
 func TestQuotedHeadingCountsAsBody(t *testing.T) {
+	// As in the PDF: a quote's bar is body, a list marker beside a heading is
+	// not.
+	for src, brk := range map[string]bool{
+		"> ## 引用見出し\n\n## 2. 章\n\n後。\n": true,
+		"- ## 項目見出し\n\n## 2. 章\n\n後。\n": false,
+		"> - ## 入れ子\n\n## 2. 章\n\n後。\n": true,
+	} {
+		o := fakeOptions(t, nil)
+		o.Theme.BreakBefore = 2
+		data, _ := write(t, src, o)
+		if got := has(findPara(t, paragraphs(t, unzipDocx(t, data).parts["word/document.xml"]), "2. 章"), "pageBreakBefore"); got != brk {
+			t.Errorf("%q: pageBreakBefore %v, want %v", src, got, brk)
+		}
+	}
+}
+
+func TestHeaderOnlyTableIsNotKept(t *testing.T) {
 	o := fakeOptions(t, nil)
-	o.Theme.BreakBefore = 2
-	data, _ := write(t, "> ## 引用見出し\n\n## 2. 章\n\n後。\n", o)
-	if !has(findPara(t, paragraphs(t, unzipDocx(t, data).parts["word/document.xml"]), "2. 章"), "pageBreakBefore") {
-		t.Error("a chapter after a quote does not break")
+	data, _ := write(t, "| 見出しだけ |\n|---|\n\n後。\n", o)
+	if has(findPara(t, paragraphs(t, unzipDocx(t, data).parts["word/document.xml"]), "見出しだけ"), "keepNext") {
+		t.Error("a header with no rows is kept with the next paragraph")
 	}
 }
 

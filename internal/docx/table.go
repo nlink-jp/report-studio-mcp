@@ -95,7 +95,7 @@ func (w *writer) table(t *markdown.Table, c ctx) {
 			p := newPPr("TableText")
 			// The header row stays with the first row, as in the PDF (and so
 			// with a heading or caption kept with the table).
-			p.keepNext = header
+			p.keepNext = header && len(t.Rows) > 0
 			switch t.Align[i] {
 			case markdown.AlignLeft:
 				p.jc = "left"

@@ -82,10 +82,10 @@ func (w *writer) para(c ctx, p ppr, content string) {
 	if w.keep {
 		p.keepNext, p.keepLines = true, true
 	}
-	// Headings of the body itself do not make a page's body (a chapter
-	// break follows them only after text); a heading inside a quote or list
-	// does, as its bar or marker does in the PDF.
-	if !strings.HasPrefix(p.style, "Heading") || !c.top {
+	// Headings do not make a page's body (a chapter break follows them only
+	// after text), unless inside a quote or alert, whose bar the PDF draws as
+	// body. A list marker beside a heading is drawn with it and does not count.
+	if !strings.HasPrefix(p.style, "Heading") || c.bar != "" {
 		w.hasBody = true
 	}
 	w.started = true
