@@ -20,6 +20,7 @@ import (
 	"github.com/nlink-jp/report-studio-mcp/internal/fsio"
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
 	"github.com/nlink-jp/report-studio-mcp/internal/pdf"
+	"github.com/nlink-jp/report-studio-mcp/internal/theme"
 	"github.com/nlink-jp/report-studio-mcp/internal/toolerr"
 	"github.com/nlink-jp/report-studio-mcp/internal/workdir"
 )
@@ -175,6 +176,14 @@ func (r renderer) render(ctx context.Context, raw json.RawMessage) (any, error) 
 		default:
 			extra = append(extra, markdown.Warning{Line: 1, Code: "invalid_front_matter_value",
 				Message: fmt.Sprintf("front matter %s: %q is not true or false; the profile's setting is used", key, v)})
+		}
+	}
+	if v := doc.Meta["break_before"]; v != "" {
+		if lvl, ok := theme.BreakLevel(v); ok {
+			th.BreakBefore = lvl
+		} else {
+			extra = append(extra, markdown.Warning{Line: 1, Code: "invalid_front_matter_value",
+				Message: fmt.Sprintf("front matter break_before: %q is not h1, h2 or none; the profile's setting is used", v)})
 		}
 	}
 	var logo *pdf.Picture

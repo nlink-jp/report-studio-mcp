@@ -266,6 +266,24 @@ func TestProfilesFromTheConfiguration(t *testing.T) {
 	if err != nil || res.WarningsTotal != 1 || res.Warnings[0].Code != "invalid_front_matter_value" {
 		t.Errorf("bad cover value: %+v %v", res.Warnings, err)
 	}
+	// break_before from the front matter: a chapter on a page of its own, or
+	// none; a bad value warns and keeps the profile's.
+	chapters := "# 第一章\n\n本文。\n\n# 第二章\n\n本文。\n"
+	for src, want := range map[string]int{
+		"---\ncover: false\ntoc: false\nbreak_before: h1\n---\n\n" + chapters:   2,
+		"---\ncover: false\ntoc: false\nbreak_before: none\n---\n\n" + chapters: 1,
+	} {
+		put(t, dir, "b.md", []byte(src))
+		res, err = call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "b.md", "formats": []string{"pdf"}}, cfg)
+		if err != nil || len(pagesOf(t, res)) != want {
+			t.Errorf("%q: %d pages, want %d (%v)", src[:40], len(pagesOf(t, res)), want, err)
+		}
+	}
+	put(t, dir, "v.md", []byte("---\nbreak_before: h4\n---\n\nx\n"))
+	res, err = call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "v.md"}, cfg)
+	if err != nil || res.WarningsTotal != 1 || res.Warnings[0].Code != "invalid_front_matter_value" {
+		t.Errorf("bad break_before value: %+v %v", res.Warnings, err)
+	}
 	// Built-ins are always there; an unknown name lists what is.
 	_, err = call(t, map[string]any{"work_dir": dir, "workspace_id": "ws", "source": "r.md", "profile": "nope"}, cfg)
 	var te *toolerr.Error

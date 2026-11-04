@@ -160,6 +160,8 @@ func (r *htmlRenderer) block(b Block, tight bool) {
 		}
 		r.esc(b.Text)
 		r.s("</code></pre>\n")
+	case *Directive:
+		// a layout instruction; nothing to show
 	case *HTMLBlock:
 		r.cr()
 		r.s(b.Raw)

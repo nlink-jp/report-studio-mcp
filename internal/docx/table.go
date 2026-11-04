@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
+	"github.com/nlink-jp/report-studio-mcp/internal/placement"
 )
 
 // table writes a GFM table across the column: fixed layout, so the grid is
@@ -28,15 +29,36 @@ func (w *writer) table(t *markdown.Table, c ctx) {
 		return nil
 	}
 	units := make([]float64, ncol)
+	nums := make([]float64, ncol) // the widest number unit, in the same units
+	see := func(i int, s string) {
+		units[i] = math.Max(units[i], float64(textWidth(s)))
+		for _, m := range placement.NumberTokens(s) {
+			nums[i] = math.Max(nums[i], float64(textWidth(placement.BoundUnit(s, m))))
+		}
+	}
 	for i := range units {
-		units[i] = float64(textWidth(plain(cell(t.Header, i))))
+		see(i, plain(cell(t.Header, i)))
 		for _, row := range t.Rows {
-			units[i] = math.Max(units[i], float64(textWidth(plain(cell(row, i)))))
+			see(i, plain(cell(row, i)))
 		}
 	}
 	pad := th.TableSize * 0.45
 	total := tw(w.availW(c))
-	widths := gridWidths(units, total, tw(th.TableSize*3+2*pad))
+	// As in the PDF, a column is never narrower than its widest number
+	// (RFP §2): a half-width character is taken as 0.55 em, a full-width one
+	// as two of those.
+	least := make([]int, ncol)
+	for i := range least {
+		least[i] = max(tw(th.TableSize*3+2*pad), tw(nums[i]*th.TableSize*0.55+2*pad))
+	}
+	widths := gridWidths(units, total, least)
+	if w.breakNext {
+		// A table carries no paragraph properties of its own: the break is a
+		// paragraph before it.
+		w.out.WriteString(`<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>`)
+		w.breakNext = false
+	}
+	w.hasBody = true
 
 	rule := hexRGB(th.Rule)
 	var b strings.Builder
@@ -67,6 +89,7 @@ func (w *writer) table(t *markdown.Table, c ctx) {
 			}
 			b.WriteString(`</w:tcPr>`)
 			p := newPPr("TableText")
+			p.keepNext = w.keep
 			switch t.Align[i] {
 			case markdown.AlignLeft:
 				p.jc = "left"
@@ -103,12 +126,20 @@ func (w *writer) cellMargins() string {
 
 // gridWidths shares total twips among columns in proportion to their
 // content (units; an empty column counts as one), keeping every column at
-// least least wide (or an equal share when even that does not fit). The
-// widths add up to total exactly.
-func gridWidths(units []float64, total, least int) []int {
+// least its least width (all of them scaled down together when they do not
+// fit). The widths add up to total exactly.
+func gridWidths(units []float64, total int, leastOf []int) []int {
 	n := len(units)
-	if least*n > total {
-		least = total / n
+	floor := 0
+	for _, l := range leastOf {
+		floor += l
+	}
+	lst := make([]float64, n)
+	for i, l := range leastOf {
+		lst[i] = float64(l)
+		if floor > total {
+			lst[i] = float64(l) * float64(total) / float64(floor)
+		}
 	}
 	share := make([]float64, n)
 	fixed := make([]bool, n)
@@ -116,7 +147,7 @@ func gridWidths(units []float64, total, least int) []int {
 		room, sum := float64(total), 0.0
 		for i, u := range units {
 			if fixed[i] {
-				room -= float64(least)
+				room -= lst[i]
 			} else {
 				sum += math.Max(u, 1)
 			}
@@ -124,11 +155,11 @@ func gridWidths(units []float64, total, least int) []int {
 		changed := false
 		for i, u := range units {
 			if fixed[i] {
-				share[i] = float64(least)
+				share[i] = lst[i]
 				continue
 			}
 			share[i] = room * math.Max(u, 1) / sum
-			if share[i] < float64(least) {
+			if share[i] < lst[i] {
 				fixed[i], changed = true, true
 			}
 		}

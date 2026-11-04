@@ -293,3 +293,56 @@ func foldRune(r rune) rune {
 	}
 	return unicode.ToLower(unicode.ToUpper(r))
 }
+
+// PlainText is the text of inlines as a reader sees it: emphasis, links and
+// code spans flattened, raw HTML as written, breaks as spaces.
+func PlainText(nodes []Inline) string {
+	var b strings.Builder
+	var walk func([]Inline)
+	walk = func(ns []Inline) {
+		for _, n := range ns {
+			switch v := n.(type) {
+			case *Text:
+				b.WriteString(v.Value)
+			case *Code:
+				b.WriteString(v.Value)
+			case *Emph:
+				walk(v.Children)
+			case *Strong:
+				walk(v.Children)
+			case *Strike:
+				walk(v.Children)
+			case *Link:
+				walk(v.Children)
+			case *Image:
+				walk(v.Alt)
+			case *RawHTML:
+				b.WriteString(v.Raw)
+			case *SoftBreak, *HardBreak:
+				b.WriteString(" ")
+			}
+		}
+	}
+	walk(nodes)
+	return b.String()
+}
+
+// OnlyImages returns a paragraph's images when it holds nothing else (but
+// whitespace and line breaks), else nil.
+func OnlyImages(ns []Inline) []*Image {
+	var out []*Image
+	for _, n := range ns {
+		switch v := n.(type) {
+		case *Image:
+			out = append(out, v)
+		case *SoftBreak, *HardBreak:
+		case *Text:
+			if strings.TrimSpace(v.Value) != "" {
+				return nil
+			}
+		default:
+			return nil
+		}
+	}
+	return out
+}

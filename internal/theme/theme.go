@@ -44,6 +44,34 @@ type Theme struct {
 	Logo string
 	// TOCTitle heads the table of contents.
 	TOCTitle string
+	// BreakBefore starts a new page before every top-level heading of this
+	// level or above (1 or 2); 0 never. The front matter's break_before
+	// overrides it.
+	BreakBefore int
+}
+
+// BreakLevel parses a break_before value: "h1", "h2" or "none".
+func BreakLevel(s string) (int, bool) {
+	switch s {
+	case "none":
+		return 0, true
+	case "h1":
+		return 1, true
+	case "h2":
+		return 2, true
+	}
+	return 0, false
+}
+
+// BreakName is BreakLevel's inverse.
+func BreakName(level int) string {
+	switch level {
+	case 1:
+		return "h1"
+	case 2:
+		return "h2"
+	}
+	return "none"
 }
 
 // HexRGB parses "#rrggbb"; it panics on a malformed literal, so use it for
@@ -94,12 +122,15 @@ func Standard() Theme {
 }
 
 // Formal is the built-in "formal" profile: a cover and a table of contents,
-// Hiragino Mincho for the body, wider margins.
+// Hiragino Mincho for the body, wider margins, chapters on a new page.
 func Formal() Theme {
 	t := Standard()
 	t.Body, t.BodyBold = "HiraMinProN-W3", "HiraMinProN-W6"
 	t.MarginT, t.MarginB, t.MarginL, t.MarginR = 25*mm, 25*mm, 25*mm, 25*mm
 	t.Cover, t.TOC = true, true
+	// A document with a cover and contents is opened chapter by chapter
+	// (RFP Discussion Log 16).
+	t.BreakBefore = 2
 	return t
 }
 

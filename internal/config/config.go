@@ -60,10 +60,11 @@ type Profile struct {
 	CodeBackground *string  `toml:"code_background"`
 	ChartPalette   []string `toml:"chart_palette"`
 
-	Cover    *bool   `toml:"cover"`
-	TOC      *bool   `toml:"toc"`
-	TOCTitle *string `toml:"toc_title"`
-	Logo     *string `toml:"logo"` // absolute path (or ~/...) of a PNG or JPEG for the cover
+	Cover       *bool   `toml:"cover"`
+	TOC         *bool   `toml:"toc"`
+	TOCTitle    *string `toml:"toc_title"`
+	BreakBefore *string `toml:"break_before"` // "h1", "h2" or "none"
+	Logo        *string `toml:"logo"`         // absolute path (or ~/...) of a PNG or JPEG for the cover
 }
 
 // Paths is where config.toml is looked for, in order: $XDG_CONFIG_HOME,
@@ -294,6 +295,13 @@ func (p Profile) apply() (theme.Theme, error) {
 			return t, errors.New("toc_title is empty")
 		}
 		t.TOCTitle = *p.TOCTitle
+	}
+	if p.BreakBefore != nil {
+		lvl, ok := theme.BreakLevel(*p.BreakBefore)
+		if !ok {
+			return t, fmt.Errorf("break_before %q: give h1, h2 or none", *p.BreakBefore)
+		}
+		t.BreakBefore = lvl
 	}
 	if p.Logo != nil {
 		logo := *p.Logo

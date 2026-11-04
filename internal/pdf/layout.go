@@ -18,6 +18,9 @@ type Picture struct {
 	Pix    []byte
 	PW, PH int
 	DispW  float64
+	// NatW, for a diagram, is the width at which its text is the body size;
+	// drawn narrower, its text shrinks in proportion.
+	NatW float64
 	// Orig is the source PNG when the picture came from one, so the .docx
 	// can embed it as it is instead of encoding the pixels again.
 	Orig []byte
@@ -189,11 +192,18 @@ type layouter struct {
 	depth  int // list nesting, for the bullet shape
 	heads  []HeadingRef
 	base   float64 // baseline of the last line text placed
+	// plans hold each block's computation (lines, table plan, figure) at a
+	// width, shared by measuring and placing.
+	plans map[planKey]any
+	// pageBody is set once the current page holds something other than
+	// headings and the title block: a chapter heading then breaks the page.
+	pageBody bool
+	quiet    int // > 0 while placing headings or the title block
 }
 
 // Layout lays a parsed manuscript out into pages.
 func Layout(md *markdown.Document, doc *Doc, o Options) (res *Result, err error) {
-	l := &layouter{doc: doc, o: o, th: o.Theme}
+	l := &layouter{doc: doc, o: o, th: o.Theme, plans: map[planKey]any{}}
 	l.x, l.w = l.th.MarginL, l.th.ContentW()
 	defer func() {
 		if r := recover(); r != nil {
@@ -207,10 +217,12 @@ func Layout(md *markdown.Document, doc *Doc, o Options) (res *Result, err error)
 	l.warns = append(l.warns, md.Warnings...)
 	l.newPage()
 	if !o.Cover {
+		l.quiet++
 		l.titleBlock(md.Meta)
+		l.quiet--
 	}
 	body := textStyle{font: l.th.Body, bold: l.th.BodyBold, size: l.th.BodySize, color: l.th.Text}
-	l.blocks(md.Children, body, false)
+	l.flow(md.Children, body, false, true)
 	l.footnotes(md.Footnotes)
 	l.closeFrames()
 	res = &Result{Pages: l.pages, Warnings: l.warns, ChartPoints: l.points, Headings: l.heads}
@@ -252,7 +264,12 @@ func (l *layouter) warn(code, msg string) {
 
 func (l *layouter) page() *Page { return l.pages[len(l.pages)-1] }
 
-func (l *layouter) add(op Op) { l.page().Ops = append(l.page().Ops, op) }
+func (l *layouter) add(op Op) {
+	l.page().Ops = append(l.page().Ops, op)
+	if l.quiet == 0 {
+		l.pageBody = true
+	}
+}
 
 func (l *layouter) bottom() float64 { return l.th.PageH - l.th.MarginB }
 
@@ -276,6 +293,7 @@ func (l *layouter) newPage() {
 			map[string]any{"limit": "pages", "max": l.o.MaxPages})
 	}
 	l.pages = append(l.pages, &Page{})
+	l.pageBody = false
 	l.y = l.th.MarginT
 	for _, f := range l.frames {
 		f.y0, f.at = l.y, len(l.page().Ops)
@@ -381,13 +399,35 @@ func (l *layouter) text(rs []rich, size float64, gapEm float64, align int) {
 	if len(rs) == 0 {
 		return
 	}
-	spans := l.spans(rs)
-	lines := l.doc.Typeset(spans, l.w)
-	gap := size * gapEm
+	l.place(rs, l.doc.Typeset(l.spans(rs), l.w), size*gapEm, align, splitFree)
+}
+
+// How lines may be divided between pages.
+const (
+	splitFree      = iota // anywhere
+	splitNever            // not at all (headings)
+	splitParagraph        // never a single line alone on a page
+)
+
+// place sets typeset lines one under another, breaking pages between lines
+// as split allows.
+func (l *layouter) place(rs []rich, lines []Line, gap float64, align, split int) {
+	if len(lines) == 0 {
+		return
+	}
 	decos := decorations(rs)
+	n := len(lines)
 	for i, ln := range lines {
 		if i%64 == 63 {
 			l.checkTime() // one paragraph can be most of a long document
+		}
+		switch {
+		case split == splitNever && i == 0:
+			l.ensure(linesHeight(lines, gap))
+		case split == splitParagraph && i == 0:
+			l.ensure(linesHeight(lines[:paraStart(n)], gap))
+		case split == splitParagraph && n >= 4 && i == n-2:
+			l.ensure(linesHeight(lines[n-2:], gap)) // the last line does not go on alone
 		}
 		h := ln.Ascent + ln.Descent
 		l.ensure(h)
@@ -522,8 +562,13 @@ func (l *layouter) flushMarker() {
 func (l *layouter) lineHeight(size float64) float64 { return size * (1.2 + l.th.LineGap) }
 
 func (l *layouter) blocks(bs []markdown.Block, ts textStyle, tight bool) {
-	for _, b := range bs {
-		l.block(b, ts, tight)
+	l.flow(bs, ts, tight, false)
+}
+
+// emit reports the warnings a plan collected while it was computed.
+func (l *layouter) emit(ws []markdown.Warning) {
+	for _, w := range ws {
+		l.warn(w.Code, w.Message)
 	}
 }
 
@@ -550,20 +595,31 @@ func (l *layouter) block(b markdown.Block, ts textStyle, tight bool) {
 			}
 			return
 		}
-		l.text(flatten(l.th, ts, v.Children, l.warn), ts.size, l.th.LineGap, 0)
+		rs, lines := l.paraLines(v, ts)
+		pl := l.plans[planKey{v, l.w}].(paraPlan)
+		delete(l.plans, planKey{v, l.w})
+		l.emit(pl.warns)
+		l.place(rs, lines, ts.size*l.th.LineGap, 0, splitParagraph)
 		l.space(after)
 	case *markdown.Heading:
+		// Headings are kept with what follows by flow; here they only stay
+		// whole. They do not count as a page's body.
 		l.line = int(v.Line)
+		l.quiet++
 		lvl := min(v.Level, 3)
 		size := l.th.HeadingSizes[lvl-1]
 		l.space(size * 0.9)
-		l.ensure(size*1.3 + 2*l.lineHeight(l.th.BodySize)) // keep with what follows
-		hs := textStyle{font: l.th.Heading, bold: l.th.Heading, size: size, color: l.th.Text}
+		lines := l.headingLines(v)
+		pl := l.plans[planKey{v, l.w}].(paraPlan)
+		delete(l.plans, planKey{v, l.w})
+		l.emit(pl.warns)
+		l.ensure(linesHeight(lines, size*0.3))
 		dest := "h" + strconv.Itoa(len(l.heads)+1)
 		l.add(DestOp{Name: dest, X: l.x, Y: l.y})
 		l.heads = append(l.heads, HeadingRef{Level: lvl, Text: plain(v.Children), Page: len(l.pages) - 1, Dest: dest})
-		l.text(flatten(l.th, hs, v.Children, l.warn), size, 0.3, 0)
+		l.place(pl.rs, lines, size*0.3, 0, splitNever)
 		l.space(size * 0.5)
+		l.quiet--
 	case *markdown.ThematicBreak:
 		l.line = int(v.Line)
 		l.ensure(ts.size)
@@ -644,24 +700,9 @@ func (l *layouter) list(v *markdown.List, ts textStyle) {
 	depth := l.depth
 	l.depth++
 	defer func() { l.depth-- }()
-	markers := make([]string, len(v.Items))
-	widest := 0.0
+	markers := listMarkers(v, bullets[depth%len(bullets)])
 	ms := l.style(tsStyle(ts, false))
-	for i, it := range v.Items {
-		switch {
-		case it.Task != nil && *it.Task:
-			markers[i] = "☑"
-		case it.Task != nil:
-			markers[i] = "☐"
-		case v.Ordered:
-			markers[i] = strconv.Itoa(v.Start+i) + "."
-		default:
-			markers[i] = bullets[depth%len(bullets)]
-		}
-		widest = math.Max(widest, l.doc.Measure(markers[i], ms))
-	}
-	indent := math.Max(ts.size*1.6, widest+ts.size*0.6)
-	indent = l.indentBy(indent)
+	indent := l.listIndent(v, ts)
 	for i, it := range v.Items {
 		l.line = int(it.Line)
 		x, w := l.x, l.w
@@ -676,6 +717,35 @@ func (l *layouter) list(v *markdown.List, ts textStyle) {
 			l.space(ts.size * 0.3)
 		}
 	}
+}
+
+// listMarkers are a list's item markers; bullet is the unordered one.
+func listMarkers(v *markdown.List, bullet string) []string {
+	markers := make([]string, len(v.Items))
+	for i, it := range v.Items {
+		switch {
+		case it.Task != nil && *it.Task:
+			markers[i] = "☑"
+		case it.Task != nil:
+			markers[i] = "☐"
+		case v.Ordered:
+			markers[i] = strconv.Itoa(v.Start+i) + "."
+		default:
+			markers[i] = bullet
+		}
+	}
+	return markers
+}
+
+// listIndent is how far a list's items are indented: room for the widest
+// marker. Bullets are all the same width, whatever the nesting.
+func (l *layouter) listIndent(v *markdown.List, ts textStyle) float64 {
+	ms := l.style(tsStyle(ts, false))
+	widest := 0.0
+	for _, m := range listMarkers(v, "•") {
+		widest = math.Max(widest, l.doc.Measure(m, ms))
+	}
+	return l.indentBy(math.Max(ts.size*1.6, widest+ts.size*0.6))
 }
 
 func (l *layouter) code(text string) {
@@ -700,7 +770,9 @@ func (l *layouter) code(text string) {
 
 func (l *layouter) chart(v *markdown.CodeBlock) {
 	l.flushMarker()
-	spec, n, err := chart.Parse([]byte(v.Text), l.o.Chart)
+	c := l.chartFigure(v)
+	delete(l.plans, planKey{v, l.w})
+	fig, n, err := c.fig, c.points, c.err
 	if err != nil {
 		line := int(v.Line)
 		if ce, ok := err.(*chart.Error); ok && ce.Line > 0 {
@@ -714,16 +786,21 @@ func (l *layouter) chart(v *markdown.CodeBlock) {
 			fmt.Sprintf("the charts hold more than %d data points in all", l.o.MaxChartPoints),
 			map[string]any{"limit": "chart_points", "max": l.o.MaxChartPoints})
 	}
-	fig := chart.Layout(spec, l.w, chartMeasurer{l}, l.th.Chart)
 	for _, w := range fig.Warnings {
 		l.warn("chart_labels_thinned", w)
 	}
-	scale := 1.0
-	if limit := l.th.BodyH() * 0.9; fig.H > limit {
-		scale = limit / fig.H
+	scale := c.scale
+	if scale < 1 {
 		l.warn("chart_scaled", fmt.Sprintf("the chart is taller than a page and is drawn at %.0f%% of its size", scale*100))
 	}
-	l.ensure(fig.H * scale)
+	// Shrunk to fit what is left of the page when that is allowed, else on
+	// to the next page.
+	fit := l.fitScale(fig.H*scale, 0)
+	if fit == 0 {
+		l.newPage()
+		fit = 1
+	}
+	scale *= fit
 	l.add(FigOp{Fig: fig, X: l.x, Y: l.y, Scale: scale})
 	l.y += fig.H * scale
 }
@@ -797,12 +874,16 @@ func (l *layouter) picture(p Picture, caption string, ts textStyle) {
 	if p.PW <= 0 || p.PH <= 0 {
 		return
 	}
-	w := math.Min(p.DispW, l.w)
-	h := w * float64(p.PH) / float64(p.PW)
-	if limit := l.th.BodyH() * 0.75; h > limit {
-		w, h = w*limit/h, limit
+	w, h := l.pictureSize(p)
+	fit := l.fitScale(h, l.captionHeight(caption, ts))
+	if fit == 0 {
+		l.newPage()
+		fit = 1
 	}
-	l.ensure(h)
+	w, h = w*fit, h*fit
+	if p.NatW > 0 && w/p.NatW < mermaidLegible {
+		l.warn("mermaid_scaled", fmt.Sprintf("the diagram is drawn at %.0f%% of its size, so its text is %.0f%% of the body size; a narrower layout (flowchart TB instead of LR) or shorter labels would read better", w/p.NatW*100, w/p.NatW*100))
+	}
 	l.add(PicOp{Pic: p, X: l.x, Y: l.y, W: w, H: h})
 	l.y += h
 	if caption != "" {
@@ -814,25 +895,13 @@ func (l *layouter) picture(p Picture, caption string, ts textStyle) {
 	l.space(ts.size * 0.75)
 }
 
+// mermaidLegible is the least share of the body size a diagram's text may be
+// drawn at without a warning.
+const mermaidLegible = 0.6
+
 // onlyImages returns a paragraph's images when it holds nothing else (but
 // whitespace and line breaks), else nil.
-func onlyImages(ns []markdown.Inline) []*markdown.Image {
-	var out []*markdown.Image
-	for _, n := range ns {
-		switch v := n.(type) {
-		case *markdown.Image:
-			out = append(out, v)
-		case *markdown.SoftBreak, *markdown.HardBreak:
-		case *markdown.Text:
-			if strings.TrimSpace(v.Value) != "" {
-				return nil
-			}
-		default:
-			return nil
-		}
-	}
-	return out
-}
+func onlyImages(ns []markdown.Inline) []*markdown.Image { return markdown.OnlyImages(ns) }
 
 // titleBlock sets the front matter's title, subtitle and byline at the top of
 // the first page.

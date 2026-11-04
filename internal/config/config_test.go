@@ -56,6 +56,7 @@ link_color = "#112233"
 chart_palette = ["#2a78d6", "#eb6834"]
 toc = false
 logo = "/Library/logo.png"
+break_before = "none"
 `)})
 	if err != nil {
 		t.Fatal(err)
@@ -68,11 +69,11 @@ logo = "/Library/logo.png"
 	const mm = 72 / 25.4
 	if th.Body != formal.Body || !th.Cover || th.TOC || th.BodySize != 11 || th.HeadingSizes != [3]float64{18, 14, 12} ||
 		math.Abs(th.MarginT-30*mm) > 1e-9 || math.Abs(th.MarginL-35*mm) > 1e-9 || th.Link != (theme.RGB{0x11 / 255.0, 0x22 / 255.0, 0x33 / 255.0}) ||
-		len(th.Chart.Palette) != 2 || th.Logo != "/Library/logo.png" {
+		len(th.Chart.Palette) != 2 || th.Logo != "/Library/logo.png" || th.BreakBefore != 0 {
 		t.Errorf("theme %+v", th)
 	}
 	// The built-in itself is untouched.
-	if g, _ := f.Theme("formal"); g.BodySize != formal.BodySize || !g.TOC {
+	if g, _ := f.Theme("formal"); g.BodySize != formal.BodySize || !g.TOC || g.BreakBefore != 2 {
 		t.Error("formal changed")
 	}
 	if !strings.Contains(strings.Join(f.Names(), ","), "standard,formal,compact,customer") {
@@ -93,6 +94,7 @@ func TestRefuses(t *testing.T) {
 		"[profiles.x]\nlogo = \"logo.png\"\n":                "absolute",
 		"[profiles.x]\ntable_size = 8\ntable_min_size = 9\n": "larger",
 		"[profiles.x]\nchart_palette = []\n":                 "empty",
+		"[profiles.x]\nbreak_before = \"h3\"\n":              "h1, h2 or none",
 		"[server]\nlog_level = \"debug\"\n":                  "server",
 		"[profiles.x\n":                                      "x",
 	} {

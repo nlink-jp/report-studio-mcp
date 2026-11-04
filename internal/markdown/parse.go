@@ -58,6 +58,7 @@ func parse(src []byte, ext bool) *Document {
 var frontMatterKeys = map[string]bool{
 	"title": true, "subtitle": true, "author": true, "date": true,
 	"classification": true, "profile": true, "cover": true, "toc": true,
+	"break_before": true,
 }
 
 // frontMatter takes a front matter block off the start of s: a first line
@@ -124,7 +125,7 @@ func (c *converter) frontMatterLine(text string, n int) {
 	}
 	key = strings.ToLower(key)
 	if !frontMatterKeys[key] {
-		c.warn(n, "unknown_front_matter_key", fmt.Sprintf("front matter key %q is not one of title, subtitle, author, date, classification, profile, cover, toc", key))
+		c.warn(n, "unknown_front_matter_key", fmt.Sprintf("front matter key %q is not one of title, subtitle, author, date, classification, profile, cover, toc, break_before", key))
 		return
 	}
 	if _, dup := c.doc.Meta[key]; dup {
@@ -215,6 +216,11 @@ func (c *converter) block(n *bnode, top bool) Block {
 	case bCodeBlock:
 		return &CodeBlock{Fenced: n.fenced, Info: n.info, Text: n.literal, Line: Line(n.startLine)}
 	case bHTMLBlock:
+		if top && c.ext {
+			if kind, ok := directive(n.literal); ok {
+				return &Directive{Kind: kind, Line: Line(n.startLine)}
+			}
+		}
 		c.warn(n.startLine, "raw_html", "raw HTML block is shown as text")
 		return &HTMLBlock{Raw: n.literal, Line: Line(n.startLine)}
 	case bTable:
@@ -455,4 +461,23 @@ func (c *converter) inline(n *inode) Inline {
 		return &FootnoteRef{Label: n.lit, Index: idx}
 	}
 	return &Text{Value: n.lit}
+}
+
+// directive reports whether an HTML block is a layout directive: one
+// comment, alone, whose content is a directive name in any case and with any
+// inner whitespace. Anything around the comment makes it ordinary HTML.
+func directive(raw string) (string, bool) {
+	s := strings.TrimSpace(raw)
+	if !strings.HasPrefix(s, "<!--") || !strings.HasSuffix(s, "-->") || len(s) < len("<!---->") {
+		return "", false
+	}
+	inner := s[len("<!--") : len(s)-len("-->")]
+	if strings.Contains(inner, "-->") {
+		return "", false // more than one comment
+	}
+	switch k := strings.ToLower(strings.Join(strings.Fields(inner), "")); k {
+	case DirectivePageBreak, DirectiveKeepWithNext:
+		return k, true
+	}
+	return "", false
 }

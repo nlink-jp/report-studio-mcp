@@ -513,21 +513,26 @@ func TestTables(t *testing.T) {
 
 func TestGridWidths(t *testing.T) {
 	for _, tc := range []struct {
-		units        []float64
-		total, least int
+		units []float64
+		total int
+		least []int
+		lo    []int // the narrowest each column may be
 	}{
-		{[]float64{1, 1, 1}, 9000, 500},
-		{[]float64{100, 1, 1}, 9000, 1000},
-		{[]float64{0, 0}, 9001, 100},
-		{[]float64{5, 5, 5, 5, 5, 5, 5, 5, 5, 5}, 1000, 300}, // least does not fit: equal shares
+		{[]float64{1, 1, 1}, 9000, []int{500, 500, 500}, []int{500, 500, 500}},
+		{[]float64{100, 1, 1}, 9000, []int{1000, 1000, 1000}, []int{1000, 1000, 1000}},
+		{[]float64{0, 0}, 9001, []int{100, 100}, []int{100, 100}},
+		// Leasts that do not fit are scaled down together.
+		{[]float64{5, 5, 5, 5, 5, 5, 5, 5, 5, 5}, 1000, []int{300, 300, 300, 300, 300, 300, 300, 300, 300, 300}, []int{100, 100, 100, 100, 100, 100, 100, 100, 100, 100}},
+		// A column holding a long number keeps it, the others share the rest.
+		{[]float64{40, 40, 9}, 6000, []int{300, 300, 2400}, []int{300, 300, 2400}},
+		{[]float64{1, 1}, 1000, []int{1500, 500}, []int{750, 250}},
 	} {
 		ws := gridWidths(tc.units, tc.total, tc.least)
 		sum := 0
-		lo := min(tc.least, tc.total/len(tc.units))
-		for _, v := range ws {
+		for i, v := range ws {
 			sum += v
-			if v < lo {
-				t.Errorf("%v: column %d below %d", tc.units, v, lo)
+			if v < tc.lo[i]-1 {
+				t.Errorf("%v %v: column %d is %d, below %d", tc.units, tc.least, i, v, tc.lo[i])
 			}
 		}
 		if sum != tc.total {

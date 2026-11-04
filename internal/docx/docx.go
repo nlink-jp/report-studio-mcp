@@ -140,6 +140,12 @@ type writer struct {
 	afterTable bool // the last thing written to out is a table
 	inNote     bool
 
+	// Page breaks (RFP §2, "Page breaks and placement"); Word paginates, so
+	// they become paragraph properties.
+	breakNext bool // the next paragraph starts a page
+	hasBody   bool // something other than headings since the last forced break
+	keep      bool // the block being written is kept with the next one
+
 	warns    []markdown.Warning
 	line     int
 	ctrl     bool // a character XML cannot carry was removed
@@ -234,8 +240,9 @@ func Write(doc *markdown.Document, o Options) (data []byte, warns []markdown.War
 	// The body first: the table of contents lists what it found.
 	var body strings.Builder
 	w.out, w.cur = &body, &w.docRels
-	w.blocks(doc.Children, ctx{})
+	w.blocks(doc.Children, ctx{top: true})
 	w.endContainer()
+	w.breakNext = false // a break at the very end has nothing to start
 
 	var notes string
 	if hasNotes {

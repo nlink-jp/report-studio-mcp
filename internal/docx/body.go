@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
+	"github.com/nlink-jp/report-studio-mcp/internal/placement"
 	"github.com/nlink-jp/report-studio-mcp/internal/theme"
 )
 
@@ -17,6 +18,7 @@ type ctx struct {
 	tight  bool   // a tight list's item: paragraphs without spacing
 	depth  int    // list nesting
 	lead   *lead  // what the next paragraph starts with
+	top    bool   // the outermost level of the body: chapter breaks apply
 }
 
 // lead is what the first paragraph of a list item or footnote carries: the
@@ -73,6 +75,16 @@ func (w *writer) para(c ctx, p ppr, content string) {
 	if w.afterTable && p.before < 0 {
 		p.before = tw(w.th.BodySize * 0.75) // a table has no spacing of its own after it
 	}
+	if w.breakNext {
+		p.pageBreakBefore = true
+		w.breakNext = false
+	}
+	if w.keep {
+		p.keepNext, p.keepLines = true, true
+	}
+	if !strings.HasPrefix(p.style, "Heading") {
+		w.hasBody = true
+	}
 	w.out.WriteString(`<w:p>` + p.xml() + content + `</w:p>`)
 	w.afterTable = false
 }
@@ -94,10 +106,31 @@ func (w *writer) endContainer() {
 	}
 }
 
+// blocks writes a container's blocks. Caption groups and blocks a
+// keep-with-next directive marked keep with the next paragraph (headings do
+// through their style); a pagebreak directive, and a chapter heading after
+// body text, start the next paragraph on a new page.
 func (w *writer) blocks(bs []markdown.Block, c ctx) {
-	for _, b := range bs {
-		w.block(b, c)
+	for _, g := range placement.Runs(placement.Items(bs)) {
+		if g.Items[0].BreakBefore {
+			w.forceBreak()
+		}
+		if g.Kept() && c.top && !w.inNote && g.Chapter(w.th.BreakBefore) && w.hasBody {
+			w.forceBreak()
+		}
+		for _, it := range g.Items {
+			w.keep = it.Keep
+			w.block(it.Block, c)
+			w.keep = false
+		}
 	}
+}
+
+// forceBreak starts the next paragraph on a new page. Several in a row are
+// one break.
+func (w *writer) forceBreak() {
+	w.breakNext = true
+	w.hasBody = false
 }
 
 func (w *writer) block(b markdown.Block, c ctx) {
@@ -137,7 +170,7 @@ func (w *writer) block(b markdown.Block, c ctx) {
 		w.line = int(v.Line)
 		w.flushLead(c)
 		q := c
-		q.pstyle, q.tight, q.lead = "Quote", false, nil
+		q.pstyle, q.tight, q.lead, q.top = "Quote", false, nil, false
 		q.indent = c.indent + w.quoteIndent()
 		q.bar = border("left", 2, w.barSpace(), hexRGB(th.QuoteBar))
 		w.blocks(v.Children, q)
@@ -149,7 +182,7 @@ func (w *writer) block(b markdown.Block, c ctx) {
 			look = theme.AlertLook{Label: string(v.Kind), Color: th.Text}
 		}
 		a := c
-		a.tight, a.lead = false, nil
+		a.tight, a.lead, a.top = false, nil, false
 		a.indent = c.indent + w.quoteIndent()
 		a.bar = border("left", 2.5, w.barSpace(), hexRGB(look.Color))
 		p := w.base(a, a.pstyle)
@@ -194,7 +227,7 @@ func (w *writer) list(v *markdown.List, c ctx) {
 	for _, it := range v.Items {
 		w.line = int(it.Line)
 		ic := c
-		ic.indent, ic.depth, ic.tight = c.indent+step, c.depth+1, v.Tight
+		ic.indent, ic.depth, ic.tight, ic.top = c.indent+step, c.depth+1, v.Tight, false
 		ld := &lead{hang: step}
 		switch {
 		case it.Task != nil && *it.Task:
@@ -340,23 +373,7 @@ func (w *writer) drawing(png []byte, wpt, hpt float64, descr string) string {
 
 // onlyImages returns a paragraph's images when it holds nothing else (but
 // whitespace and line breaks), else nil.
-func onlyImages(ns []markdown.Inline) []*markdown.Image {
-	var out []*markdown.Image
-	for _, n := range ns {
-		switch v := n.(type) {
-		case *markdown.Image:
-			out = append(out, v)
-		case *markdown.SoftBreak, *markdown.HardBreak:
-		case *markdown.Text:
-			if strings.TrimSpace(v.Value) != "" {
-				return nil
-			}
-		default:
-			return nil
-		}
-	}
-	return out
-}
+func onlyImages(ns []markdown.Inline) []*markdown.Image { return markdown.OnlyImages(ns) }
 
 // footnotes is footnotes.xml: the two separators settings.xml refers to,
 // then each note, id = its display number, in the FootnoteText style.

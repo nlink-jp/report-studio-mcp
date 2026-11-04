@@ -265,7 +265,8 @@ func (a *Assets) mermaid(src string) (pdf.Picture, error) {
 	}
 	const baseEm = 14 // raster's pixels per em at scale 1
 	w1, h1 := float64(one.Bounds().Dx()), float64(one.Bounds().Dy())
-	dispW := math.Min(w1/baseEm*a.lay.BodyPt, a.lay.ContentW)
+	natW := w1 / baseEm * a.lay.BodyPt // its text at the body size
+	dispW := math.Min(natW, a.lay.ContentW)
 	scale := math.Min(dispW/72*a.lay.DPI/w1, raster.MaxScale)
 	// Stay under the per-image limit with a margin for rounding.
 	if most := math.Sqrt(float64(raster.MaxPixels)/(w1*h1)) * 0.98; scale > most {
@@ -281,5 +282,5 @@ func (a *Assets) mermaid(src string) (pdf.Picture, error) {
 	if err := a.spend(b.Dx() * b.Dy()); err != nil {
 		return pdf.Picture{}, err
 	}
-	return pdf.Picture{Pix: img.Pix, PW: b.Dx(), PH: b.Dy(), DispW: dispW}, nil
+	return pdf.Picture{Pix: img.Pix, PW: b.Dx(), PH: b.Dy(), DispW: dispW, NatW: natW}, nil
 }

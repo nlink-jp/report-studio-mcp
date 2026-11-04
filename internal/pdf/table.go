@@ -1,21 +1,110 @@
 package pdf
 
 import (
+	"fmt"
 	"math"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/nlink-jp/report-studio-mcp/internal/markdown"
 )
 
 // table lays a GFM table out across the column. Columns take their natural
 // widths when they fit; otherwise the type shrinks, down to the theme's floor,
-// and then cells wrap. The header row repeats at the top of every page the
-// table continues on, and a row taller than a page continues too.
+// and then cells wrap, never narrower than the longest number in a column
+// (numbers are not broken: RFP §2). The header row repeats at the top of
+// every page the table continues on, and a row taller than a page continues
+// too.
 func (l *layouter) table(t *markdown.Table) {
 	l.flushMarker()
+	if len(t.Align) == 0 {
+		return
+	}
+	p := l.tablePlan(t)
+	delete(l.plans, planKey{t, l.w})
+	l.emit(p.warns)
+	widths, pad := p.widths, p.pad
+
+	headCells := l.cellLines(p.head, widths, pad)
+	headH := rowHeight(headCells, pad)
+	// The header starts a page only together with the first row, or it is
+	// left alone at the foot of the page.
+	if p.first <= l.bottom()-l.top() {
+		l.ensure(p.first)
+	} else {
+		l.ensure(headH)
+	}
+	var split []int // columns where a number broke across lines
+	note := func(cells []cell, toks [][]span16) {
+		for c := range cells {
+			if c < len(toks) && brokenToken(cells[c].lines, toks[c]) && !slices.Contains(split, c) {
+				split = append(split, c)
+			}
+		}
+	}
+	drawHead := func() {
+		l.row(l.cellLines(p.head, widths, pad), widths, pad, t.Align, true)
+	}
+	note(headCells, p.headToks)
+	drawHead()
+	// A header taller than half a page is not repeated: repeating it would
+	// leave no room for rows (and recursed through the page hook).
+	repeat := headH <= (l.bottom()-l.top())/2
+	if repeat {
+		l.hooks = append(l.hooks, drawHead)
+	}
+	for r, row := range p.rows {
+		cells := l.cellLines(row, widths, pad)
+		note(cells, p.rowToks[r])
+		l.row(cells, widths, pad, t.Align, false)
+	}
+	if repeat {
+		l.hooks = l.hooks[:len(l.hooks)-1]
+	}
+	if len(split) > 0 {
+		slices.Sort(split)
+		var names []string
+		for _, c := range split {
+			names = append(names, strings.TrimSpace(plain(t.Header[c])))
+		}
+		l.line = int(t.Line)
+		l.warn("cell_token_split", fmt.Sprintf("the table is too wide to keep its numbers whole: numbers break across lines in the columns %s; fewer columns or a split table would keep them whole", strings.Join(quoteAll(names), ", ")))
+	}
+}
+
+func quoteAll(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = strconv.Quote(s)
+	}
+	return out
+}
+
+// tablePlan is a table's computation at the current width: the type size,
+// the column widths, the cells as rich text with their numbers joined, and
+// the height of the header and first row.
+type tablePlan struct {
+	size, pad float64
+	widths    []float64
+	head      [][]rich
+	rows      [][][]rich
+	headToks  [][]span16   // per column, the number tokens of the header
+	rowToks   [][][]span16 // per row and column
+	first     float64      // header and first row
+	warns     []markdown.Warning
+}
+
+func (l *layouter) tablePlan(t *markdown.Table) *tablePlan {
+	k := planKey{t, l.w}
+	if v, ok := l.plans[k]; ok {
+		return v.(*tablePlan)
+	}
 	th := l.th
 	ncol := len(t.Align)
-	if ncol == 0 {
-		return
+	p := &tablePlan{}
+	collect := func(code, msg string) {
+		p.warns = append(p.warns, markdown.Warning{Line: int(t.Line), Code: code, Message: msg})
 	}
 	cells := func(size float64, warn func(code, msg string)) ([][]rich, [][][]rich) {
 		ts := textStyle{font: th.Body, bold: th.BodyBold, size: size, color: th.Text}
@@ -35,21 +124,23 @@ func (l *layouter) table(t *markdown.Table) {
 		return head, rows
 	}
 
+	quiet := func(string, string) {}
 	var size, pad float64
-	var widths []float64
+	var natural, least []float64
 	var head [][]rich
 	var rows [][][]rich
-	quiet := func(string, string) {}
 	for size = th.TableSize; ; size -= 0.5 {
 		pad = size * 0.45
 		// Trial sizes stay quiet; the size chosen warns once below (each
 		// trial warned again: independent review).
 		head, rows = cells(size, quiet)
-		natural := make([]float64, ncol)
+		natural = make([]float64, ncol)
+		least = make([]float64, ncol)
 		see := func(c int, rs []rich) {
 			for _, ln := range l.doc.Typeset(l.spans(rs), math.MaxFloat32) {
 				natural[c] = math.Max(natural[c], ln.Width+2*pad)
 			}
+			least[c] = math.Max(least[c], l.tokenWidth(rs)+2*pad)
 		}
 		for c := range head {
 			see(c, head[c])
@@ -64,44 +155,30 @@ func (l *layouter) table(t *markdown.Table) {
 			total += w
 		}
 		if total <= l.w || size-0.5 < th.TableMinSize {
-			widths = fitColumns(natural, l.w, size*3+2*pad)
 			if total > l.w {
-				l.warn("table_wrapped", "a wide table is set at its smallest type and its cells wrap")
+				collect("table_wrapped", "a wide table is set at its smallest type and its cells wrap")
 			}
 			break
 		}
 	}
-	head, rows = cells(size, l.warn)
-
-	headCells := l.cellLines(head, widths, pad)
-	headH := rowHeight(headCells, pad)
-	// The header starts a page only together with the first row, or it is
-	// left alone at the foot of the page.
-	first := headH
-	if len(rows) > 0 {
-		first += rowHeight(l.cellLines(rows[0], widths, pad), pad)
+	for c := range least {
+		least[c] = math.Max(least[c], size*3+2*pad)
 	}
-	if first <= l.bottom()-l.top() {
-		l.ensure(first)
-	} else {
-		l.ensure(headH)
+	head, rows = cells(size, collect)
+	p.size, p.pad = size, pad
+	p.widths = fitColumns(natural, l.w, least)
+	p.head, p.headToks = joinCells(head)
+	p.rows = make([][][]rich, len(rows))
+	p.rowToks = make([][][]span16, len(rows))
+	for r := range rows {
+		p.rows[r], p.rowToks[r] = joinCells(rows[r])
 	}
-	drawHead := func() {
-		l.row(l.cellLines(head, widths, pad), widths, pad, t.Align, true)
+	p.first = rowHeight(l.cellLines(p.head, p.widths, pad), pad)
+	if len(p.rows) > 0 {
+		p.first += rowHeight(l.cellLines(p.rows[0], p.widths, pad), pad)
 	}
-	drawHead()
-	// A header taller than half a page is not repeated: repeating it would
-	// leave no room for rows (and recursed through the page hook).
-	repeat := headH <= (l.bottom()-l.top())/2
-	if repeat {
-		l.hooks = append(l.hooks, drawHead)
-	}
-	for _, row := range rows {
-		l.row(l.cellLines(row, widths, pad), widths, pad, t.Align, false)
-	}
-	if repeat {
-		l.hooks = l.hooks[:len(l.hooks)-1]
-	}
+	l.plans[k] = p
+	return p
 }
 
 // cell is one table cell's lines and the decorations they carry.
@@ -123,14 +200,14 @@ func rowHeight(cells []cell, pad float64) float64 {
 }
 
 // fitColumns scales natural widths to the available width: up
-// proportionally when they fit, else down, keeping each column at least
-// least wide (or an equal share when even that is too much).
-func fitColumns(natural []float64, avail, least float64) []float64 {
-	n := float64(len(natural))
-	least = math.Min(least, avail/n)
-	total := 0.0
-	for _, w := range natural {
+// proportionally when they fit, else down, keeping each column at least its
+// least width. When the least widths alone are too wide, they are scaled
+// down together (and cells break inside what they hold).
+func fitColumns(natural []float64, avail float64, least []float64) []float64 {
+	total, floor := 0.0, 0.0
+	for i, w := range natural {
 		total += w
+		floor += least[i]
 	}
 	out := make([]float64, len(natural))
 	if total <= avail {
@@ -139,15 +216,21 @@ func fitColumns(natural []float64, avail, least float64) []float64 {
 		}
 		return out
 	}
-	over := 0.0
-	for _, w := range natural {
-		over += math.Max(w-least, 0)
+	if floor >= avail {
+		for i := range least {
+			out[i] = least[i] * avail / floor
+		}
+		return out
 	}
-	room := avail - least*n
+	over := 0.0
 	for i, w := range natural {
-		out[i] = least
+		over += math.Max(w-least[i], 0)
+	}
+	room := avail - floor
+	for i, w := range natural {
+		out[i] = least[i]
 		if over > 0 {
-			out[i] += math.Max(w-least, 0) * room / over
+			out[i] += math.Max(w-least[i], 0) * room / over
 		}
 	}
 	return out

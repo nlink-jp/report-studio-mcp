@@ -84,3 +84,37 @@ func TestDecoratedParagraphIsLinear(t *testing.T) {
 		t.Errorf("8x the spans took %v against %v", large, small)
 	}
 }
+
+// Keeping blocks together measures each block once and shares the result
+// with its placement: runs of headings and keep-with-next directives, and the
+// tables they precede, cost time linear in their number (RFP Phase 4).
+func TestKeepingIsLinear(t *testing.T) {
+	table := func(rows int) string {
+		var b strings.Builder
+		b.WriteString("| 区分 | 件数 | 金額 | 備考 |\n|---|---:|---:|---|\n")
+		for i := 0; i < rows; i++ {
+			b.WriteString("| 種別 | 1,234 | 9,876,543 | 説明の文章 |\n")
+		}
+		return b.String()
+	}
+	measure := func(n int) time.Duration {
+		var b strings.Builder
+		for i := 0; i < n; i++ {
+			b.WriteString("## 見出し\n\n### 小見出し\n\n<!-- keep-with-next -->\n\n**表1：数値**\n\n")
+			b.WriteString(table(20))
+			b.WriteString("\n")
+		}
+		b.WriteString(strings.Repeat("## 見出し\n\n<!-- keep-with-next -->\n\n", n*5))
+		b.WriteString(table(2000))
+		doc := md.Parse([]byte(b.String()))
+		start := time.Now()
+		layout(t, doc, opts())
+		took := time.Since(start)
+		t.Logf("%4d groups: %v", n, took)
+		return took
+	}
+	small, large := measure(10), measure(80)
+	if large > small*20+500*time.Millisecond {
+		t.Errorf("8x the groups took %v against %v", large, small)
+	}
+}

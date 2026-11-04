@@ -129,6 +129,20 @@ type HTMLBlock struct {
 	Line Line
 }
 
+// Directive is a layout instruction: an HTML block at the top level of the
+// body holding nothing but a comment whose content is one of the directive
+// names (RFP §2, "Page breaks and placement"). It is not shown.
+type Directive struct {
+	Kind string // DirectivePageBreak or DirectiveKeepWithNext
+	Line Line
+}
+
+// Directive kinds.
+const (
+	DirectivePageBreak    = "pagebreak"
+	DirectiveKeepWithNext = "keep-with-next"
+)
+
 // Align is a table column's alignment.
 type Align int
 
@@ -205,6 +219,7 @@ func (*List) node()          {}
 func (*ListItem) node()      {}
 func (*CodeBlock) node()     {}
 func (*HTMLBlock) node()     {}
+func (*Directive) node()     {}
 func (*Table) node()         {}
 func (*Text) node()          {}
 func (*Code) node()          {}
@@ -226,6 +241,7 @@ func (*Alert) block()         {}
 func (*List) block()          {}
 func (*CodeBlock) block()     {}
 func (*HTMLBlock) block()     {}
+func (*Directive) block()     {}
 func (*Table) block()         {}
 
 func (*Text) inline()        {}

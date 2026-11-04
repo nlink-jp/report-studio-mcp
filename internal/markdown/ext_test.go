@@ -417,3 +417,37 @@ func TestLinkLabelCaseFolding(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectives(t *testing.T) {
+	src := "<!-- pagebreak -->\n\n<!--  Keep-With-Next  -->\n\n<!-- pagebreak --> x\n\n<!-- landscape -->\n\n> <!-- pagebreak -->\n\n<!-- pagebreak --><!-- pagebreak -->\n"
+	d := Parse([]byte(src))
+	var kinds []string
+	for _, b := range d.Children {
+		switch v := b.(type) {
+		case *Directive:
+			kinds = append(kinds, v.Kind)
+		case *HTMLBlock:
+			kinds = append(kinds, "html")
+		case *BlockQuote:
+			if _, ok := v.Children[0].(*HTMLBlock); ok {
+				kinds = append(kinds, "quote>html")
+			}
+		}
+	}
+	want := []string{"pagebreak", "keep-with-next", "html", "html", "quote>html", "html"}
+	if !reflect.DeepEqual(kinds, want) {
+		t.Errorf("blocks %v, want %v", kinds, want)
+	}
+	// Directives are not raw HTML; the rest still warns.
+	if got := warningKeys(d); !reflect.DeepEqual(got, []string{"5:raw_html", "7:raw_html", "9:raw_html", "11:raw_html"}) {
+		t.Errorf("warnings %v", got)
+	}
+	// Without extensions (the CommonMark spec run) a directive is plain HTML.
+	if b, ok := parse([]byte("<!-- pagebreak -->\n"), false).Children[0].(*HTMLBlock); !ok || strings.TrimSpace(b.Raw) != "<!-- pagebreak -->" {
+		t.Errorf("extensions off: %#v", parse([]byte("<!-- pagebreak -->\n"), false).Children[0])
+	}
+	// break_before is a front matter key.
+	if d := Parse([]byte("---\nbreak_before: h2\n---\n\nx\n")); d.Meta["break_before"] != "h2" || len(d.Warnings) != 0 {
+		t.Errorf("front matter %v %v", d.Meta, d.Warnings)
+	}
+}

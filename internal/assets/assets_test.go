@@ -164,6 +164,22 @@ func TestMermaidDrawsWithinTheColumnAndTheLimit(t *testing.T) {
 		t.Errorf("drawn at %.0f dpi", got)
 	}
 
+	// A narrow diagram is shown with its text at the body size.
+	if p.NatW != p.DispW {
+		t.Errorf("natural width %v, shown at %v", p.NatW, p.DispW)
+	}
+	// A wide one is fitted to the column; its natural width says how much
+	// its text shrank (the typesetter warns below 60%).
+	wide, err := a.Mermaid("flowchart LR\n"+
+		"  S1[\"工程1（準備）この工程の説明文を二十文字程度置く\"] --> S2[\"工程2（展開）この工程の説明文を二十文字程度置く\"]\n"+
+		"  S2 --> S3[\"工程3（拡大）この工程の説明文を二十文字程度置く\"] --> S4[\"工程4（移行）この工程の説明文を二十文字程度置く\"]\n", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wide.DispW != lay.ContentW || wide.NatW <= wide.DispW*1.5 {
+		t.Errorf("wide diagram: natural %v, shown at %v of %v", wide.NatW, wide.DispW, lay.ContentW)
+	}
+
 	// A resolution no diagram could reach is capped at the per-image limit
 	// rather than refused.
 	big := New(d, "r.md", Limits{Diagrams: 5, PixelBudget: 100_000_000}, Layout{BodyPt: 10.5, ContentW: 481.9, DPI: 5000})

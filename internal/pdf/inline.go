@@ -166,33 +166,4 @@ func linkTarget(dest string) string {
 func PlainText(nodes []markdown.Inline) string { return plain(nodes) }
 
 // plain returns inlines as plain text (image descriptions, captions, titles).
-func plain(nodes []markdown.Inline) string {
-	var b strings.Builder
-	var walk func([]markdown.Inline)
-	walk = func(ns []markdown.Inline) {
-		for _, n := range ns {
-			switch v := n.(type) {
-			case *markdown.Text:
-				b.WriteString(v.Value)
-			case *markdown.Code:
-				b.WriteString(v.Value)
-			case *markdown.Emph:
-				walk(v.Children)
-			case *markdown.Strong:
-				walk(v.Children)
-			case *markdown.Strike:
-				walk(v.Children)
-			case *markdown.Link:
-				walk(v.Children)
-			case *markdown.Image:
-				walk(v.Alt)
-			case *markdown.RawHTML:
-				b.WriteString(v.Raw) // the text shows it; so do the contents and the title
-			case *markdown.SoftBreak, *markdown.HardBreak:
-				b.WriteString(" ")
-			}
-		}
-	}
-	walk(nodes)
-	return b.String()
-}
+func plain(nodes []markdown.Inline) string { return markdown.PlainText(nodes) }
