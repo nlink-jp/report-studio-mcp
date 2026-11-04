@@ -37,6 +37,11 @@ make verify-release  # also verify-skill-zip: refuses a release without the curr
 make install-skill   # unpack the skill zip into ~/.claude/skills (SKILLS_DEST=...)
 ```
 
+**Releasing uploads the skill zip too.** `make package` builds
+`dist/report-manuscript-<version>.zip` beside the binary archives and `verify-release`
+refuses a release without it, but nothing checks the upload: attach it with
+the binaries (`gh release upload`), every release.
+
 `make build` needs `CGO_ENABLED=1` (set by the Makefile) and Xcode's command
 line tools.
 
@@ -100,14 +105,17 @@ When a sibling fixes one of these packages, port the fix here too.
 chapters, directives, acting on warnings), not a copy of `get_usage`.
 `internal/tools/skill_test.go` holds it to the server:
 
-- every backticked identifier must be a tool, a schema property, a code that
+- every backticked snake_case identifier, and the key of every backticked
+  `key: value` example, must be a tool, a schema property, a code that
   `serverCodes` finds raised in the source, a json/toml tag, or a front-matter
   key that `markdown.Parse` accepts;
 - every `<!-- … -->` must parse as a directive;
 - the `~~~markdown` examples must parse with no warning, and their tables must
   be paired with a caption by `placement.Items`.
 
-A renamed code, key or directive fails the build until the skill follows. When
+A renamed code, snake_case key or directive fails the build until the skill
+follows; a one-word name in backticks (`classification`, `toc`) is not
+checked, so review those by hand. When
 you add a raise site of a new form, make sure `serverCodes`' pattern reads it.
 `get_usage` lacked `workspace_failed` because that pattern read too few forms.
 
