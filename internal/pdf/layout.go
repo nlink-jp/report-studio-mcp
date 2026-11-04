@@ -882,7 +882,7 @@ func (l *layouter) picture(p Picture, caption string, ts textStyle) {
 	}
 	w, h = w*fit, h*fit
 	if p.NatW > 0 && w/p.NatW < mermaidLegible {
-		l.warn("mermaid_scaled", fmt.Sprintf("the diagram is drawn at %.0f%% of its size, so its text is %.0f%% of the body size; a narrower layout (flowchart TB instead of LR) or shorter labels would read better", w/p.NatW*100, w/p.NatW*100))
+		l.warn("mermaid_scaled", fmt.Sprintf("the diagram is shrunk to fit: its text is %.0f%% of the body size; a narrower layout (flowchart TB instead of LR) or shorter labels would read better", w/p.NatW*100))
 	}
 	l.add(PicOp{Pic: p, X: l.x, Y: l.y, W: w, H: h})
 	l.y += h
