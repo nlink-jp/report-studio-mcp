@@ -38,15 +38,43 @@ produces a document ready to hand over.
   numbered lists, a table of contents field, and the same pictures and charts.
   The recipient can restyle it in Word.
 
+## Page breaks
+
+Most documents need nothing written for this:
+
+- A heading, and a **caption** with what it captions, stay on the same page as
+  the start of what follows. A caption is a paragraph of only bold text, or one
+  starting `表1：`, `図1：`, `Table 1:` or `Figure 1:`, written directly before
+  a table, chart, diagram, image or code block; an italic note line
+  (`*出典: ...*`) between them belongs to it.
+- Headings are never split, and a paragraph never leaves a single line alone
+  on a page.
+- A chart, diagram or image that does not fit the rest of a page is shrunk to
+  fit (not below 70%) or moves on with its caption.
+- **Numbers in table cells are not broken across lines** (`1,234,567`,
+  `12.34%`, `▲１２．３４％`). When a table is too wide for that, the warning
+  `cell_token_split` names the columns.
+- `break_before` starts chapters on a new page: `formal` puts every top-level
+  `##` heading on a new page; `h1`, `h2` or `none` can be set in a profile or
+  in the front matter.
+
+Two directives cover the rest, each an HTML comment alone on its own lines at
+the top level of the body (other Markdown viewers show nothing):
+
+```markdown
+<!-- pagebreak -->
+<!-- keep-with-next -->
+```
+
 ## Profiles
 
 Three built-in profiles: `standard` (A4, Hiragino Sans), `formal` (cover,
-table of contents, Hiragino Mincho body, wider margins) and `compact` (narrow
-margins, smaller type). The operator can add profiles in `config.toml`
+table of contents, Hiragino Mincho body, wider margins, chapters on a new
+page) and `compact` (narrow margins, smaller type). The operator can add profiles in `config.toml`
 (`$XDG_CONFIG_HOME`, `~/.config` or `~/Library/Application Support`, under
 `report-studio-mcp/`), each extending a built-in and overriding page, margins,
-fonts, sizes, colours, chart palette, cover, table of contents and a cover
-logo:
+fonts, sizes, colours, chart palette, cover, table of contents, a cover logo
+and the page break before chapters:
 
 ```toml
 [profiles.customer]
@@ -58,7 +86,7 @@ logo = "~/Pictures/logo.png"
 
 The manuscript picks a profile by name (`profile:` in its front matter, or
 the `profile` argument) and can turn the cover and contents on or off
-(`cover:`, `toc:`). The file is decoded strictly with
+(`cover:`, `toc:`) and set the chapter break (`break_before:`). The file is decoded strictly with
 [nlink-jp/toml](https://github.com/nlink-jp/toml): an unknown key is an error.
 
 Errors are reserved for output that would be wrong (invalid chart JSON, a
@@ -98,6 +126,10 @@ directory the caller can read back (organization ADR-021).
   verified.
 - In the .docx, the table of contents lists the headings without page
   numbers; Word fills them in when the field is updated.
+- In the .docx, the page-break rules are paragraph properties (keep with next,
+  page break before, widow control) that the reader applies; how Word
+  paginates is not verified. Column widths keep half-width numbers whole, but
+  full-width digits (`１２３`) may still break in a narrow column there.
 - Text runs left to right; right-to-left paragraphs are kept but laid out in a
   left-to-right line.
 

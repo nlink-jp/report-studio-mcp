@@ -127,8 +127,9 @@ from the policy that appearance never decides pass or fail).
   is at least 70% of the original and at least eight body lines are left; otherwise it moves to the next
   page with its caption group. Whether a group fits a fresh page is also measured with this shrinking
   allowed. 70% and eight lines are initial values, measured on the test data below and recorded.
-- **Widows and orphans**: a paragraph of three or more lines never leaves only its first line at the foot of
-  a page nor carries only its last line to the next. Not applied to code or table cells.
+- **Widows and orphans**: a paragraph of two or more lines never leaves a single line alone on a page (not
+  its first line at the foot of a page, not its last line on the next; a paragraph of two or three lines
+  is not split), as Word's `widowControl` does. Not applied to code or table cells.
 - **Numbers are not broken**: a number in a table cell (digits with `,` and `.`, including a leading sign or
   currency symbol and a trailing `%`) does not wrap mid-way. A column's minimum width is at least the width
   of the longest number in it. When the minimum widths together exceed the text width, the table shrinks
@@ -151,13 +152,16 @@ from the policy that appearance never decides pass or fail).
   with any other content, are shown as text as before.
   - `<!-- pagebreak -->`: break the page here. Nothing happens at the top of a page (several in a row make
     no blank pages).
-  - `<!-- keep-with-next -->`: keep the end of the next block on the same page as the start of the block
-    after it. It does not make the next block unsplittable.
+  - `<!-- keep-with-next -->`: keep the next block on the same page as the start of the block after it;
+    when the next block fits a page, it moves whole. It applies to paragraphs, headings, code, charts,
+    diagrams, images and rules; not to tables, lists or quotes (they may exceed a page; the directive is
+    ignored there).
 - **.docx**: Word decides the page breaks, so paragraphs carry the matching properties. Caption groups get
   `keepNext`; chapter breaks and `pagebreak` set `pageBreakBefore` on the next paragraph (no paragraph made
   only for a break; not on the first heading right after the cover and TOC, nor on the second and later
-  headings of a run). Set per paragraph, not in the heading styles. Body paragraphs carry `widowControl`
-  explicitly. Table column widths take the longest number as their minimum, as in the PDF. What these
+  headings of a run; a table, which has no paragraph properties, gets a break-only paragraph before it).
+  Set per paragraph, not in the heading styles. `widowControl` is written in the Normal style (it is on by
+  default when absent, but is stated). Table column widths take the longest number as their minimum, as in the PDF. What these
   properties mean is read in the relevant clauses of ECMA-376 5th edition Part 1 before implementing, and
   the clause numbers are recorded. Word cannot be checked (Discussion Log 13), so a person checks the page
   breaks in Pages and LibreOffice.
@@ -536,3 +540,35 @@ No external platform is depended on. Product-side constraints:
     defect against this profile's own purpose. → `formal` defaults to `h2` (`standard` and `compact` aim at
     compact output and stay `none`). The cost of the change (how many pages are added, that no near-empty
     pages appear) is measured in Phase 4's tests. CHANGELOG and README state it as a default change.
+17. **Measurements behind the implementation, and Phase 4's results (2026-11-04, macOS 27.2, Apple M2 Max).**
+    - **Core Text and numbers**: ten numbers were set in 13 contexts, 14 line positions and 3 column widths.
+      Half-width numbers stay whole when the column is at least as wide as the number with what cannot be
+      separated from it (an opening bracket before, closing brackets and full stops after, letters run into
+      it, and the character before a leading `-`). Full-width digits broke even with the column at 1.3 times
+      the number (there is a break opportunity between them). A WORD JOINER (U+2060) between a number's
+      characters stopped that too, 0/42 splits; it has no width and is not in the text PDFKit extracts. → The
+      PDF uses both. The .docx does not get U+2060, which would come along when a number is copied from Word
+      (README, Limitations).
+    - **Word's paragraph properties**: read in the element definitions of ISO/IEC 29500-1 (= ECMA-376 Part 1)
+      quoted by Microsoft Learn's Open XML SDK reference (2026-11-04). `keepNext` chains, and a group taller
+      than a page starts on a new page and flows; `pageBreakBefore` overrides `keepNext`; `widowControl` is
+      on when absent. That source gives no clause numbers, so the element names are recorded.
+    - **Reported problems not reproduced**: a real heading wrapping to three lines was not split even on
+      v0.1.0 (the height reserved for headings sufficed). The report's #2 was a bold paragraph standing in for
+      a heading; it reproduced on v0.1.0 as a two-line paragraph split one and one. → The widow/orphan rule
+      covers paragraphs of two or more lines (as Word does).
+    - **What keep-with-next means**: keeping "the end of the next block" with the following start would need
+      pulling a paragraph's last lines forward. Instead, the next block moves whole when it fits a page, which
+      is what Word's `keepNext` on all of that block's paragraphs does.
+    - **The synthetic sample**: across 61 variants (0-60 dummy lines) the table and chart captions stay with
+      their bodies and no number breaks. The chart was shrunk in place in 8 (74-99%) and moved on with its
+      caption in 13. The wide mermaid diagram gave `mermaid_scaled` with its text at 52% of the body size. →
+      70%, eight lines and 60% are kept as the initial values.
+    - **Cost of `formal`'s chapter break**: on 40 synthetic seven-chapter reports (about 0.7 page a chapter,
+      paragraphs, sections and tables mixed at random), 203 pages with `none` became 330 with `h2` (+3.2 a
+      document). No page was empty; 49 pages (about 1.2 a document) were under 20% full, a previous
+      chapter's end running a few lines onto the next page. The shorter the chapters, the higher the cost;
+      these reports are near the worst case.
+    - **Time**: a manuscript with 80 groups of headings, directives and captions and a 2,000-row table took
+      0.18 s; eight times the groups stayed within proportion.
+

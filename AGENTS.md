@@ -18,6 +18,11 @@ available; operator's decision 2026-11-04) — the README's Limitations say so;
 keep that sentence true until someone checks. Phase 0 results are in
 `docs/ja/phase0-criteria.ja.md`.
 
+**In progress: v0.2.0, page breaks and placement** (RFP Phase 4, Discussion
+Log 14-17): implemented and tested, CHANGELOG under [Unreleased]. Remaining
+before release: a person checks the .docx page breaks in Pages and
+LibreOffice, the pre-release independent review, and the release steps.
+
 Design: `docs/ja/report-studio-mcp-rfp.ja.md` (canonical) and
 `docs/en/report-studio-mcp-rfp.md`.
 
@@ -48,7 +53,10 @@ internal/chart           ```chart JSON → strict validation → figure (shapes 
                          injected Measurer (Core Text in the PDF side, a fixed advance in tests)
 internal/pdf             cgo bridge to Core Text / Core Graphics (bridge.c), the block layout into per-page
                          op lists (layout.go, table.go; frames carry quote bars and code backgrounds across
-                         pages), and rendering ops to PDF (render.go). PDFKit reads output back in tests
+                         pages), page-break decisions and measuring (flow.go), numbers kept whole in cells
+                         (numbers.go), and rendering ops to PDF (render.go). PDFKit reads output back in tests
+internal/placement       what both typesetters read the same way for page breaks: caption groups,
+                         directives, runs of kept blocks, number tokens and their unbreakable units
 internal/fsio            every read and write: os.Root + kernel path (F_GETPATH) judged by pathguard,
                          regular files only, O_EXCL temp + rename for outputs, output byte cap
 internal/theme           what a profile decides (shared by PDF and .docx) and the built-ins standard/formal/compact
@@ -108,3 +116,17 @@ When a sibling fixes one of these packages, port the fix here too.
 - Never gate a commit on `go test … | tail`: the pipe's status is tail's.
   Capture the status (`go test ./... >log 2>&1; rc=$?`).
 - Module path: `github.com/nlink-jp/report-studio-mcp`.
+- Page breaks: measuring a block's start (`lead`, `full` in pdf/flow.go) must use
+  the same computation that places it. Paragraph lines, table plans and chart
+  figures are cached in `l.plans` keyed by block and width, and the placement
+  takes them from there and deletes them; never typeset a block a second way
+  just to measure it (the start and the placement would disagree, and large
+  tables would cost twice).
+- `pageBody` decides chapter breaks: every op added outside `quiet` (headings,
+  the title block) marks the page as holding body. Anything new that draws
+  without counting as body must raise `l.quiet`.
+- Word joiners (U+2060) go inside numbers in table cells in the PDF only. The
+  .docx must not get them: Word keeps them in copied text.
+- Caption, directive and number rules live once, in internal/placement; the
+  PDF and the .docx both read from there. Change them there, never in one
+  typesetter.

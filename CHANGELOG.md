@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Page breaks and placement, from a real user's report on a 42-page `formal`
+  document (RFP §2, Discussion Log 14-17):
+  - captions (a bold-only paragraph, or one starting `表1：`, `図1：`,
+    `Table 1:`, `Figure 1:`, with an italic note line) and headings of every
+    level stay on the same page as the start of what follows;
+  - headings are never split, and a paragraph never leaves a single line
+    alone on a page;
+  - charts, diagrams and images that do not fit the rest of a page are shrunk
+    to fit (not below 70%) or move on with their caption;
+  - numbers in table cells are not broken across lines;
+  - `break_before` (`h1`, `h2`, `none`) in profiles and the front matter;
+  - the directives `<!-- pagebreak -->` and `<!-- keep-with-next -->`;
+  - warnings `cell_token_split`, `caption_separated` and `mermaid_scaled`;
+  - the .docx carries the same as keep-with-next, page-break-before and
+    widow-control properties and number-aware column widths.
+
+### Changed
+
+- **`formal` now starts every top-level `##` chapter on a new page** (a
+  default change: documents in `formal` get longer). A document with a cover
+  and contents is opened chapter by chapter; set `break_before = "none"` in a
+  profile, or `break_before: none` in the front matter, for the old layout.
+- An HTML comment holding only `pagebreak` or `keep-with-next` is no longer
+  shown as text or warned about as `raw_html`.
+
 ## [0.1.1] - 2026-11-04
 
 ### Security
