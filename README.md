@@ -138,7 +138,9 @@ From a clone, `make install-skill` builds the zip and unpacks it into
 `~/.claude/skills/` (`SKILLS_DEST=<dir>` for another directory). `make test`
 runs the organization's skill validator. `internal/tools/skill_test.go` holds
 the skill to the server. Every tool and profile must be named. Every name the
-skill teaches must exist in the server, and every directive must parse as one.
+skill writes in backticks (a snake_case name, or the key of a `key: value`
+example) must exist in the server, and every directive must parse as one. A
+one-word name is not checked.
 The example manuscripts must parse without a warning, with the caption paired
 with its table.
 

@@ -107,13 +107,31 @@ var notServerNames = map[string]string{}
 
 var snakeIdent = regexp.MustCompile("`([a-z]+(?:_[a-z0-9]+)+)`")
 
+// keyIdent is the key of a `key: value` example, such as `async: true`: a
+// single word, which snakeIdent does not see.
+var keyIdent = regexp.MustCompile("`([a-z][a-z0-9_]*): [^`]+`")
+
+// skillIdentifiers returns the names the skill teaches that this test can
+// tell from prose: snake_case identifiers in backticks, and the keys of
+// backticked `key: value` examples. A single plain word in backticks is not
+// among them — it cannot be told from an ordinary word — so a misspelled
+// one-word argument or key passes unless an example that parses carries it.
+func skillIdentifiers(corpus string) []string {
+	var out []string
+	for _, re := range []*regexp.Regexp{snakeIdent, keyIdent} {
+		for _, m := range re.FindAllStringSubmatch(corpus, -1) {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
 // A misspelled or retired name passes every "does the skill mention X" check;
 // only a closed vocabulary catches it.
 func TestSkillNamesOnlyWhatTheServerHas(t *testing.T) {
 	known := serverVocabulary(t)
 	seen := map[string]bool{}
-	for _, m := range snakeIdent.FindAllStringSubmatch(readSkill(t), -1) {
-		name := m[1]
+	for _, name := range skillIdentifiers(readSkill(t)) {
 		if seen[name] {
 			continue
 		}
@@ -137,15 +155,18 @@ func TestSkillNamesOnlyWhatTheServerHas(t *testing.T) {
 	}
 }
 
-// Every warning the skill's table tells the writer how to act on is one the
-// server raises, and the table covers the warnings a manuscript change fixes.
+// The warnings the skill's table tells the writer how to act on. The list is
+// written here; it is checked against the codes the server raises, so it
+// cannot name one that does not exist, but a new warning is added by hand.
 func TestSkillActsOnTheManuscriptWarnings(t *testing.T) {
 	codes := serverCodes(t)
 	s := readSkill(t)
 	for _, code := range []string{
 		"caption_separated", "cell_token_split", "table_wrapped", "mermaid_scaled",
 		"mermaid_fallback", "chart_scaled", "chart_labels_thinned", "deep_heading",
-		"inline_image", "raw_html", "unknown_front_matter_key",
+		"inline_image", "raw_html", "unknown_front_matter_key", "unclosed_front_matter",
+		"duplicate_front_matter_key", "invalid_front_matter_value", "invalid_front_matter_line",
+		"link_scheme",
 	} {
 		if !codes[code] {
 			t.Errorf("this test expects the warning %q, which the server no longer raises", code)

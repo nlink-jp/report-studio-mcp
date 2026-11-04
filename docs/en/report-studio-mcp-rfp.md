@@ -635,12 +635,14 @@ No external platform is depended on. Product-side constraints:
       `get_usage`. How to structure an investigation report in general, and the data-visualisation method,
       are not in it (skills-series#1's question).
     - **Held to the server**: `internal/tools/skill_test.go` checks the skill against the server:
-      - every backticked identifier exists in the server: a tool, a schema property, a code raised in the
+      - every snake_case identifier in backticks, and the key of every backticked `key: value` example,
+        exists in the server: a tool, a schema property, a code raised in the
         source, a json/toml tag, or a front-matter key the parser accepts;
       - every `<!-- … -->` parses as a directive;
       - the example manuscripts parse with no warning, and their tables are paired with a caption.
 
-      A renamed name fails as soon as the server drops it, so retired names need no separate list.
+      A renamed name of those kinds fails as soon as the server drops it, so retired names need no separate
+      list. A one-word name in backticks cannot be told from an ordinary word and is not checked.
     - **Found by the check**: the existing test that `get_usage` names every code read only some of the forms
       that raise one. Reading more of them showed `workspace_failed` missing from `get_usage`; it is now
       listed.
